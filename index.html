@@ -5,28 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OrageRadar</title>
 
+    <meta name="description" content="OrageRadar - Surveillance météo et radar orageux en temps réel.">
+    <meta name="theme-color" content="#020617">
+    <meta name="application-name" content="OrageRadar">
+    <meta name="apple-mobile-web-app-title" content="OrageRadar">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
+    <link rel="manifest" href="manifest.json">
+
     <script src="https://cdn.tailwindcss.com"></script>
 
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
     <style>
-        .suggestion-item:hover {
-            background-color: #334155;
-        }
-
-        iframe {
-            display: block;
-        }
-
+        .suggestion-item:hover { background-color: #334155; }
+        iframe { display: block; }
         .map-mode.active {
             background-color: #0284c7;
             border-color: #38bdf8;
             color: white;
         }
-
-        .favorite-card:hover {
-            background-color: #1e293b;
+        .favorite-card:hover { background-color: #1e293b; }
+        .app-logo {
+            width: 58px;
+            height: 58px;
+            object-fit: contain;
+            display: block;
         }
     </style>
 </head>
@@ -37,9 +44,7 @@
 
     <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-x-3">
-            <div class="w-11 h-11 bg-sky-500 rounded-2xl flex items-center justify-center">
-                <i class="fa-solid fa-cloud-bolt text-white text-2xl"></i>
-            </div>
+            <img src="logo.png" alt="OrageRadar" class="app-logo">
 
             <div>
                 <h1 class="text-2xl font-semibold tracking-tight">OrageRadar</h1>
@@ -53,12 +58,11 @@
                        type="text"
                        placeholder="Rechercher une ville..."
                        class="w-full bg-slate-900 border border-slate-700 focus:border-sky-500 px-4 py-2.5 pl-10 rounded-2xl outline-none text-sm">
-
                 <i class="fa-solid fa-search absolute left-4 top-3 text-slate-500"></i>
             </div>
 
             <div id="suggestions-box"
-                 class="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-2xl shadow-xl hidden max-h-80 overflow-auto">
+                 class="absolute z-50 w-full mt-1 bg-slate-900 border border-slate-700 rounded-2xl shadow-xl hidden max-h-96 overflow-auto">
             </div>
         </div>
 
@@ -154,36 +158,31 @@
             </div>
 
             <div class="flex flex-wrap gap-2">
-                <button id="mode-radar"
-                        onclick="setMapMode('radar')"
+                <button id="mode-radar" onclick="setMapMode('radar')"
                         class="map-mode active px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
                     <i class="fa-solid fa-cloud-bolt mr-1"></i>
                     Radar animé
                 </button>
 
-                <button id="mode-rain"
-                        onclick="setMapMode('rain')"
+                <button id="mode-rain" onclick="setMapMode('rain')"
                         class="map-mode px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
                     <i class="fa-solid fa-cloud-rain mr-1"></i>
                     Pluie +1h
                 </button>
 
-                <button id="mode-thunder"
-                        onclick="setMapMode('thunder')"
+                <button id="mode-thunder" onclick="setMapMode('thunder')"
                         class="map-mode px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
                     <i class="fa-solid fa-bolt mr-1"></i>
                     Orages +1h
                 </button>
 
-                <button id="mode-clouds"
-                        onclick="setMapMode('clouds')"
+                <button id="mode-clouds" onclick="setMapMode('clouds')"
                         class="map-mode px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
                     <i class="fa-solid fa-cloud mr-1"></i>
                     Nuages
                 </button>
 
-                <button id="mode-wind"
-                        onclick="setMapMode('wind')"
+                <button id="mode-wind" onclick="setMapMode('wind')"
                         class="map-mode px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
                     <i class="fa-solid fa-wind mr-1"></i>
                     Vent
@@ -225,7 +224,7 @@
     const searchInput = document.getElementById("search-input");
     const suggestionsBox = document.getElementById("suggestions-box");
 
-    searchInput.addEventListener("input", showSuggestions);
+    searchInput.addEventListener("input", debounce(showSuggestions, 250));
 
     searchInput.addEventListener("keydown", function (event) {
         if (event.key === "Enter") {
@@ -238,6 +237,155 @@
             suggestionsBox.classList.add("hidden");
         }
     });
+
+    function debounce(callback, delay) {
+        let timer;
+        return function (...args) {
+            clearTimeout(timer);
+            timer = setTimeout(() => callback.apply(this, args), delay);
+        };
+    }
+
+    function normalizeCityText(text) {
+        return String(text || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[-_'’`]/g, " ")
+            .replace(/[^\p{L}\p{N}\s]/gu, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function levenshtein(a, b) {
+        a = normalizeCityText(a);
+        b = normalizeCityText(b);
+
+        const matrix = [];
+
+        for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+        for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                matrix[i][j] = b.charAt(i - 1) === a.charAt(j - 1)
+                    ? matrix[i - 1][j - 1]
+                    : Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    );
+            }
+        }
+
+        return matrix[b.length][a.length];
+    }
+
+    function cityScore(query, place) {
+        const q = normalizeCityText(query);
+        const name = normalizeCityText(place.name || "");
+        const full = normalizeCityText(`${place.name || ""} ${place.admin1 || ""} ${place.country || ""}`);
+
+        if (!q || !name) return 0;
+        if (name === q) return 100;
+        if (full.includes(q)) return 94;
+        if (name.includes(q)) return 90;
+        if (q.includes(name)) return 82;
+
+        const qWords = q.split(" ");
+        const fullWords = full.split(" ");
+
+        let wordMatches = 0;
+
+        qWords.forEach(qWord => {
+            if (fullWords.some(fullWord =>
+                fullWord === qWord ||
+                fullWord.includes(qWord) ||
+                qWord.includes(fullWord) ||
+                levenshtein(qWord, fullWord) <= 1
+            )) {
+                wordMatches++;
+            }
+        });
+
+        const wordScore = Math.round((wordMatches / qWords.length) * 80);
+        const distance = levenshtein(q, name);
+        const maxLength = Math.max(q.length, name.length);
+        const similarity = 1 - distance / maxLength;
+        const typoScore = Math.round(similarity * 75);
+
+        return Math.max(wordScore, typoScore);
+    }
+
+    function buildSearchVariants(query) {
+        const normalized = normalizeCityText(query);
+
+        const variants = [
+            query,
+            normalized,
+            normalized.replace(/\s+/g, "-"),
+            query.replace(/-/g, " "),
+            query.replace(/\s+/g, "-")
+        ];
+
+        const words = normalized.split(" ").filter(Boolean);
+
+        if (words.length > 1) {
+            variants.push(words.join(" "));
+            variants.push(words.join("-"));
+            variants.push(words[0]);
+            variants.push(words.slice(0, 2).join(" "));
+        }
+
+        return [...new Set(variants.filter(Boolean))];
+    }
+
+    async function fetchCitySuggestions(query) {
+        const variants = buildSearchVariants(query);
+        const allResults = [];
+
+        for (const variant of variants) {
+            const url =
+                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(variant)}` +
+                "&count=10" +
+                "&language=fr" +
+                "&format=json";
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.results) {
+                    allResults.push(...data.results);
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        const deduped = [];
+
+        allResults.forEach(place => {
+            const key = `${place.name}-${place.admin1 || ""}-${place.country || ""}-${place.latitude}-${place.longitude}`;
+
+            if (!deduped.some(item => {
+                const itemKey = `${item.name}-${item.admin1 || ""}-${item.country || ""}-${item.latitude}-${item.longitude}`;
+                return itemKey === key;
+            })) {
+                deduped.push(place);
+            }
+        });
+
+        return deduped
+            .map(place => ({ ...place, score: cityScore(query, place) }))
+            .filter(place => place.score >= 30)
+            .sort((a, b) => {
+                if ((a.country || "") === "France" && (b.country || "") !== "France") return -1;
+                if ((a.country || "") !== "France" && (b.country || "") === "France") return 1;
+                return b.score - a.score;
+            })
+            .slice(0, 8);
+    }
 
     function getWeatherInfo(code) {
         const map = {
@@ -269,41 +417,11 @@
 
     function getModeConfig(mode) {
         const configs = {
-            radar: {
-                overlay: "radar",
-                calendar: "now",
-                product: "",
-                radarRange: "-1",
-                label: "radar animé en direct"
-            },
-            rain: {
-                overlay: "rain",
-                calendar: "1",
-                product: "ecmwf",
-                radarRange: "",
-                label: "pluie prévue +1h"
-            },
-            thunder: {
-                overlay: "thunder",
-                calendar: "1",
-                product: "ecmwf",
-                radarRange: "",
-                label: "orages prévus +1h"
-            },
-            clouds: {
-                overlay: "clouds",
-                calendar: "now",
-                product: "ecmwf",
-                radarRange: "",
-                label: "nuages"
-            },
-            wind: {
-                overlay: "wind",
-                calendar: "now",
-                product: "ecmwf",
-                radarRange: "",
-                label: "vent"
-            }
+            radar: { overlay: "radar", calendar: "now", product: "", radarRange: "-1", label: "radar animé en direct" },
+            rain: { overlay: "rain", calendar: "1", product: "ecmwf", radarRange: "", label: "pluie prévue +1h" },
+            thunder: { overlay: "thunder", calendar: "1", product: "ecmwf", radarRange: "", label: "orages prévus +1h" },
+            clouds: { overlay: "clouds", calendar: "now", product: "ecmwf", radarRange: "", label: "nuages" },
+            wind: { overlay: "wind", calendar: "now", product: "ecmwf", radarRange: "", label: "vent" }
         };
 
         return configs[mode] || configs.radar;
@@ -317,9 +435,7 @@
         });
 
         const activeButton = document.getElementById("mode-" + mode);
-        if (activeButton) {
-            activeButton.classList.add("active");
-        }
+        if (activeButton) activeButton.classList.add("active");
 
         updateWindy(currentLat, currentLon, currentCity, currentCountry, currentZoom);
     }
@@ -346,20 +462,13 @@
             "&metricWind=km/h" +
             "&metricTemp=°C";
 
-        if (modeConfig.product) {
-            windyUrl += `&product=${encodeURIComponent(modeConfig.product)}`;
-        }
-
-        if (modeConfig.radarRange) {
-            windyUrl += `&radarRange=${encodeURIComponent(modeConfig.radarRange)}`;
-        }
+        if (modeConfig.product) windyUrl += `&product=${encodeURIComponent(modeConfig.product)}`;
+        if (modeConfig.radarRange) windyUrl += `&radarRange=${encodeURIComponent(modeConfig.radarRange)}`;
 
         iframe.src = windyUrl;
 
         document.getElementById("map-location").textContent =
-            cityName
-                ? `${cityName}${country ? " — " + country : ""} — ${modeConfig.label}`
-                : "";
+            cityName ? `${cityName}${country ? " — " + country : ""} — ${modeConfig.label}` : "";
     }
 
     async function setLocation(lat, lon, cityName, country = "", options = {}) {
@@ -374,12 +483,9 @@
         currentZoom = zoom;
 
         updateWindy(lat, lon, cityName, country, zoom);
-
         await loadWeather(lat, lon, cityName, showCountry ? country : "");
 
-        if (save) {
-            saveToHistory(cityName, country, lat, lon);
-        }
+        if (save) saveToHistory(cityName, country, lat, lon);
 
         suggestionsBox.classList.add("hidden");
         searchInput.value = "";
@@ -389,17 +495,9 @@
     function saveToHistory(cityName, country, lat, lon) {
         let history = JSON.parse(localStorage.getItem("searchHistory") || "[]");
 
-        history = history.filter(item =>
-            !(item.name === cityName && item.country === country)
-        );
+        history = history.filter(item => !(item.name === cityName && item.country === country));
 
-        history.unshift({
-            name: cityName,
-            country: country,
-            lat: lat,
-            lon: lon
-        });
-
+        history.unshift({ name: cityName, country: country, lat: lat, lon: lon });
         history = history.slice(0, 8);
 
         localStorage.setItem("searchHistory", JSON.stringify(history));
@@ -416,9 +514,7 @@
     function addCurrentToFavorites() {
         let favorites = getFavorites();
 
-        const exists = favorites.some(item =>
-            item.name === currentCity && item.country === currentCountry
-        );
+        const exists = favorites.some(item => item.name === currentCity && item.country === currentCountry);
 
         if (!exists) {
             favorites.unshift({
@@ -471,24 +567,17 @@
                     <div class="font-medium text-sm truncate">${item.name}</div>
                     <div class="text-xs text-slate-400 truncate">${item.country || ""}</div>
                 </div>
-
                 <button class="text-slate-500 hover:text-red-300 shrink-0">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             `;
 
             div.onclick = async () => {
-                await setLocation(
-                    item.lat,
-                    item.lon,
-                    item.name,
-                    item.country || "",
-                    {
-                        save: false,
-                        zoom: SELECTED_CITY_ZOOM,
-                        showCountry: true
-                    }
-                );
+                await setLocation(item.lat, item.lon, item.name, item.country || "", {
+                    save: false,
+                    zoom: SELECTED_CITY_ZOOM,
+                    showCountry: true
+                });
             };
 
             div.querySelector("button").onclick = event => {
@@ -501,9 +590,7 @@
     }
 
     async function loadWeather(lat, lon, cityName, country = "") {
-        if (lat === undefined || lon === undefined || lat === null || lon === null) {
-            return;
-        }
+        if (lat === undefined || lon === undefined || lat === null || lon === null) return;
 
         const url =
             `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
@@ -515,9 +602,7 @@
             const response = await fetch(url);
             const data = await response.json();
 
-            if (!data.current) {
-                throw new Error("Aucune donnée météo reçue.");
-            }
+            if (!data.current) throw new Error("Aucune donnée météo reçue.");
 
             const current = data.current;
             const info = getWeatherInfo(current.weather_code);
@@ -527,19 +612,13 @@
             document.getElementById("weather-icon").textContent = info.emoji;
             document.getElementById("temp").textContent = Math.round(current.temperature_2m);
             document.getElementById("description").textContent = info.desc;
-            document.getElementById("feels-like").textContent =
-                Math.round(current.apparent_temperature) + "°C";
-            document.getElementById("wind").textContent =
-                Math.round(current.wind_speed_10m) + " km/h";
-            document.getElementById("humidity").textContent =
-                Math.round(current.relative_humidity_2m) + "%";
+            document.getElementById("feels-like").textContent = Math.round(current.apparent_temperature) + "°C";
+            document.getElementById("wind").textContent = Math.round(current.wind_speed_10m) + " km/h";
+            document.getElementById("humidity").textContent = Math.round(current.relative_humidity_2m) + "%";
 
             document.getElementById("update-time").textContent =
                 "Mis à jour à " +
-                new Date().toLocaleTimeString("fr-FR", {
-                    hour: "2-digit",
-                    minute: "2-digit"
-                });
+                new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
             renderHourlyForecast(data);
 
@@ -553,28 +632,20 @@
         container.innerHTML = "";
 
         const now = new Date();
-        let startIndex = data.hourly.time.findIndex(time => {
-            return new Date(time) >= now;
-        });
+        let startIndex = data.hourly.time.findIndex(time => new Date(time) >= now);
 
-        if (startIndex === -1) {
-            startIndex = 0;
-        }
+        if (startIndex === -1) startIndex = 0;
 
         for (let i = startIndex; i < startIndex + 8 && i < data.hourly.time.length; i++) {
             const hourDate = new Date(data.hourly.time[i]);
             const hourInfo = getWeatherInfo(data.hourly.weather_code[i]);
 
             const div = document.createElement("div");
-            div.className =
-                "bg-slate-800 border border-slate-700 rounded-2xl p-3 text-center";
+            div.className = "bg-slate-800 border border-slate-700 rounded-2xl p-3 text-center";
 
             div.innerHTML = `
                 <div class="text-xs text-slate-400">
-                    ${hourDate.toLocaleTimeString("fr-FR", {
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    })}
+                    ${hourDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                 </div>
                 <div class="text-2xl my-1">${hourInfo.emoji}</div>
                 <div class="font-semibold">${Math.round(data.hourly.temperature_2m[i])}°</div>
@@ -598,62 +669,48 @@
 
         renderHistory();
 
-        try {
-            const url =
-                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}` +
-                "&count=8" +
-                "&language=fr" +
-                "&format=json";
+        const results = await fetchCitySuggestions(query);
 
-            const response = await fetch(url);
-            const data = await response.json();
+        if (results.length > 0) {
+            const header = document.createElement("div");
+            header.className = "px-4 py-1 text-xs text-slate-400 bg-slate-800";
+            header.textContent = "Suggestions corrigées";
+            suggestionsBox.appendChild(header);
 
-            if (data.results && data.results.length > 0) {
-                const header = document.createElement("div");
-                header.className = "px-4 py-1 text-xs text-slate-400 bg-slate-800";
-                header.textContent = "Suggestions";
-                suggestionsBox.appendChild(header);
+            results.forEach(place => {
+                const div = document.createElement("div");
+                div.className = "suggestion-item px-4 py-2 cursor-pointer flex justify-between gap-3 text-sm";
 
-                data.results.forEach(place => {
-                    const div = document.createElement("div");
-                    div.className =
-                        "suggestion-item px-4 py-2 cursor-pointer flex justify-between gap-3 text-sm";
+                const admin = place.admin1 ? `, ${place.admin1}` : "";
+                const country = place.country || "";
 
-                    const admin = place.admin1 ? `, ${place.admin1}` : "";
-                    const country = place.country || "";
+                div.innerHTML = `
+                    <span>${place.name}${admin}</span>
+                    <span class="text-xs text-slate-400">${country}</span>
+                `;
 
-                    div.innerHTML = `
-                        <span>${place.name}${admin}</span>
-                        <span class="text-xs text-slate-400">${country}</span>
-                    `;
+                div.onclick = async () => {
+                    await setLocation(place.latitude, place.longitude, place.name, country, {
+                        save: true,
+                        zoom: SELECTED_CITY_ZOOM,
+                        showCountry: true
+                    });
+                };
 
-                    div.onclick = async () => {
-                        await setLocation(
-                            place.latitude,
-                            place.longitude,
-                            place.name,
-                            country,
-                            {
-                                save: true,
-                                zoom: SELECTED_CITY_ZOOM,
-                                showCountry: true
-                            }
-                        );
-                    };
-
-                    suggestionsBox.appendChild(div);
-                });
-            }
-
-        } catch (error) {}
+                suggestionsBox.appendChild(div);
+            });
+        } else {
+            const empty = document.createElement("div");
+            empty.className = "px-4 py-3 text-sm text-slate-400";
+            empty.textContent = "Aucune ville trouvée.";
+            suggestionsBox.appendChild(empty);
+        }
     }
 
     function renderHistory() {
         const history = JSON.parse(localStorage.getItem("searchHistory") || "[]");
 
-        if (history.length === 0) {
-            return;
-        }
+        if (history.length === 0) return;
 
         const header = document.createElement("div");
         header.className = "px-4 py-1 text-xs text-slate-400 bg-slate-800";
@@ -662,8 +719,7 @@
 
         history.forEach(item => {
             const div = document.createElement("div");
-            div.className =
-                "suggestion-item px-4 py-2 cursor-pointer flex justify-between gap-3 text-sm";
+            div.className = "suggestion-item px-4 py-2 cursor-pointer flex justify-between gap-3 text-sm";
 
             div.innerHTML = `
                 <span>${item.name}</span>
@@ -671,17 +727,11 @@
             `;
 
             div.onclick = async () => {
-                await setLocation(
-                    item.lat,
-                    item.lon,
-                    item.name,
-                    item.country || "",
-                    {
-                        save: false,
-                        zoom: SELECTED_CITY_ZOOM,
-                        showCountry: true
-                    }
-                );
+                await setLocation(item.lat, item.lon, item.name, item.country || "", {
+                    save: false,
+                    zoom: SELECTED_CITY_ZOOM,
+                    showCountry: true
+                });
             };
 
             suggestionsBox.appendChild(div);
@@ -691,40 +741,20 @@
     async function searchCity() {
         const query = searchInput.value.trim();
 
-        if (!query) {
-            return;
-        }
+        if (!query) return;
 
-        try {
-            const url =
-                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}` +
-                "&count=1" +
-                "&language=fr" +
-                "&format=json";
+        const results = await fetchCitySuggestions(query);
 
-            const response = await fetch(url);
-            const data = await response.json();
+        if (results.length > 0) {
+            const place = results[0];
 
-            if (data.results && data.results.length > 0) {
-                const place = data.results[0];
-
-                await setLocation(
-                    place.latitude,
-                    place.longitude,
-                    place.name,
-                    place.country || "",
-                    {
-                        save: true,
-                        zoom: SELECTED_CITY_ZOOM,
-                        showCountry: true
-                    }
-                );
-            } else {
-                alert("Ville non trouvée.");
-            }
-
-        } catch (error) {
-            alert("Erreur pendant la recherche de la ville.");
+            await setLocation(place.latitude, place.longitude, place.name, place.country || "", {
+                save: true,
+                zoom: SELECTED_CITY_ZOOM,
+                showCountry: true
+            });
+        } else {
+            alert("Ville non trouvée.");
         }
     }
 
@@ -736,12 +766,9 @@
 
         navigator.geolocation.getCurrentPosition(
             async position => {
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
-
                 await setLocation(
-                    lat,
-                    lon,
+                    position.coords.latitude,
+                    position.coords.longitude,
                     "Ma position",
                     "",
                     {
@@ -767,17 +794,17 @@
 
         renderFavorites();
 
-        await setLocation(
-            DEFAULT_LOCATION.lat,
-            DEFAULT_LOCATION.lon,
-            DEFAULT_LOCATION.name,
-            DEFAULT_LOCATION.country,
-            {
-                save: false,
-                zoom: DEFAULT_ZOOM,
-                showCountry: true
-            }
-        );
+        await setLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.name, DEFAULT_LOCATION.country, {
+            save: false,
+            zoom: DEFAULT_ZOOM,
+            showCountry: true
+        });
+    }
+
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("sw.js");
+        });
     }
 
     window.onload = init;
