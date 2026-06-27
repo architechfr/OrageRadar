@@ -40,6 +40,9 @@
         @media (max-width: 640px) {
             #search-input { font-size: 16px; }
         }
+        /* Bandeau d'alerte orage / instabilité */
+        .alert-storm { background: rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.40); color:#fcd34d; }
+        .alert-clear { background: rgba(52,211,153,.10); border:1px solid rgba(52,211,153,.35); color:#6ee7b7; }
     </style>
 </head>
 
@@ -101,6 +104,8 @@
             </div>
 
             <div id="description" class="text-xl mb-5">Chargement...</div>
+
+            <div id="storm-alert" class="hidden rounded-2xl px-4 py-3 text-sm mb-5 flex items-center gap-2"></div>
 
             <div class="grid grid-cols-3 gap-3 text-sm mb-4">
                 <div class="bg-slate-800 rounded-2xl p-3">
@@ -601,8 +606,9 @@
 
         const url =
             `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m" +
-            "&hourly=temperature_2m,weather_code" +
+            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m" +
+            "&minutely_15=precipitation,weather_code" +
+            "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,cape" +
             "&timezone=auto";
 
         try {
@@ -627,11 +633,77 @@
                 "Mis à jour à " +
                 new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
+            renderStormAlert(current, data);
             renderHourlyForecast(data);
 
         } catch (error) {
             alert("Impossible de charger la météo pour cette ville.");
         }
+    }
+
+    function stormLevel(code) {
+        if ([82, 95, 96, 99].includes(code)) return 2;
+        if ([61, 63, 65, 71, 73, 75, 80, 81].includes(code)) return 1;
+        return 0;
+    }
+
+    // Alerte combinant plusieurs signaux : le weather_code seul rate les orages
+    // convectifs (le radar les voit avant le modèle).
+    //  1. Nowcast 0-90 min (minutely_15) → pluie / orage imminent
+    //  2. Prévision 0-12h : codes orage, probabilité de pluie, rafales
+    //  3. CAPE (instabilité) → potentiel orageux même si le code dit « beau »
+    function renderStormAlert(current, data) {
+        const el = document.getElementById("storm-alert");
+        if (!el) return;
+        const now = new Date();
+
+        let nowcastPrecip = 0, nowcastStorm = false;
+        if (data.minutely_15 && data.minutely_15.time) {
+            const t = data.minutely_15.time,
+                  p = data.minutely_15.precipitation || [],
+                  wc = data.minutely_15.weather_code || [];
+            let s = t.findIndex(x => new Date(x) >= now); if (s === -1) s = 0;
+            for (let i = s; i < s + 6 && i < t.length; i++) {
+                nowcastPrecip += (p[i] || 0);
+                if (stormLevel(wc[i]) >= 2) nowcastStorm = true;
+            }
+        }
+
+        let level = 0, maxProb = 0, maxCape = 0, soonStorm = false;
+        let maxGust = (current.wind_gusts_10m ?? current.wind_speed_10m) || 0;
+        if (data.hourly) {
+            const H = data.hourly;
+            let s = H.time.findIndex(x => new Date(x) >= now); if (s === -1) s = 0;
+            for (let i = s; i < s + 12 && i < H.time.length; i++) {
+                const st = stormLevel(H.weather_code[i]);
+                if (st >= 2) soonStorm = true;
+                level = Math.max(level, st);
+                if (H.precipitation_probability) maxProb = Math.max(maxProb, H.precipitation_probability[i] || 0);
+                if (H.wind_gusts_10m)            maxGust = Math.max(maxGust, H.wind_gusts_10m[i] || 0);
+                if (H.cape)                      maxCape = Math.max(maxCape, H.cape[i] || 0);
+            }
+        }
+
+        let msg = "", cls = "alert-storm";
+        if (nowcastStorm) {
+            msg = `<i class="fa-solid fa-bolt"></i> Orage imminent (moins d'1 h) — mettez-vous à l'abri.`;
+        } else if (nowcastPrecip >= 0.5) {
+            msg = `<i class="fa-solid fa-cloud-showers-heavy"></i> Pluie imminente (~${nowcastPrecip.toFixed(1)} mm dans l'heure).`;
+        } else if (level >= 2 || soonStorm) {
+            msg = `<i class="fa-solid fa-triangle-exclamation"></i> Risque d'orage dans les prochaines heures.`;
+        } else if (maxGust >= 50) {
+            msg = `<i class="fa-solid fa-wind"></i> Rafales jusqu'à ${Math.round(maxGust)} km/h.`;
+        } else if (maxProb >= 60 || level >= 1) {
+            msg = `<i class="fa-solid fa-cloud-rain"></i> Pluie probable (${Math.round(maxProb)} %).`;
+        } else if (maxCape >= 1000) {
+            msg = `<i class="fa-solid fa-cloud-bolt"></i> Atmosphère instable (potentiel orageux) — surveillez le radar, les cellules peuvent se former vite.`;
+        } else {
+            cls = "alert-clear";
+            msg = `<i class="fa-solid fa-circle-check"></i> Pas d'alerte orage sur les prochaines heures.`;
+        }
+        el.className = "rounded-2xl px-4 py-3 text-sm mb-5 flex items-center gap-2 " + cls;
+        el.innerHTML = msg;
+        el.classList.remove("hidden");
     }
 
     function renderHourlyForecast(data) {
