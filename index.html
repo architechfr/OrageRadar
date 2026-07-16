@@ -460,6 +460,9 @@
             "https://embed.windy.com/embed2.html" +
             `?lat=${encodeURIComponent(lat)}` +
             `&lon=${encodeURIComponent(lon)}` +
+            // Le pin Windy se place sur detailLat/detailLon (marker=true seul ne suffit pas)
+            `&detailLat=${encodeURIComponent(lat)}` +
+            `&detailLon=${encodeURIComponent(lon)}` +
             `&zoom=${encodeURIComponent(zoom)}` +
             "&level=surface" +
             `&overlay=${encodeURIComponent(modeConfig.overlay)}` +
@@ -837,6 +840,23 @@
         }
     }
 
+    // Nom de la commune à partir de coordonnées, pour vérifier visuellement
+    // que la géolocalisation est correcte (BAN pour la France, fallback mondial).
+    async function reverseGeocode(lat, lon) {
+        try {
+            const r = await fetch(`https://api-adresse.data.gouv.fr/reverse/?lat=${lat}&lon=${lon}&type=municipality`);
+            const d = await r.json();
+            const f = d.features && d.features[0];
+            if (f && f.properties && f.properties.city) return { name: f.properties.city, country: "France" };
+        } catch (e) { /* hors France ou API indisponible */ }
+        try {
+            const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=fr`);
+            const d = await r.json();
+            if (d.city || d.locality) return { name: d.city || d.locality, country: d.countryName || "" };
+        } catch (e) { /* silencieux */ }
+        return null;
+    }
+
     function getCurrentLocation() {
         if (!navigator.geolocation) {
             alert("La géolocalisation n'est pas disponible sur ce navigateur.");
@@ -845,20 +865,29 @@
 
         navigator.geolocation.getCurrentPosition(
             async position => {
-                await setLocation(
-                    position.coords.latitude,
-                    position.coords.longitude,
-                    "Ma position",
-                    "",
-                    {
-                        save: false,
-                        zoom: CURRENT_POSITION_ZOOM,
-                        showCountry: false
-                    }
-                );
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                const accuracy = Math.round(position.coords.accuracy || 0);
+
+                // Nommer le lieu détecté pour que l'utilisateur puisse contrôler
+                const place = await reverseGeocode(lat, lon);
+                const name = place ? place.name : "Ma position";
+                const country = place ? place.country : "";
+
+                await setLocation(lat, lon, name, country, {
+                    save: false,
+                    zoom: CURRENT_POSITION_ZOOM,
+                    showCountry: !!country
+                });
+
+                // Position réseau/IP très imprécise (fréquent sur PC fixe) → prévenir
+                if (accuracy > 5000) {
+                    document.getElementById("update-time").textContent +=
+                        ` — position approximative (±${Math.round(accuracy / 1000)} km), préférez la recherche par ville`;
+                }
             },
             () => {
-                alert("Impossible d'obtenir votre position.");
+                alert("Impossible d'obtenir votre position. Recherchez votre ville par son nom.");
             },
             {
                 enableHighAccuracy: true,
