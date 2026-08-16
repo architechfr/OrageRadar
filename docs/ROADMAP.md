@@ -19,14 +19,15 @@
 
 - [x] **Comparaison des modèles** AROME / ECMWF / ICON / GFS avec verdict d'accord ou de désaccord
 
+- [x] **Tableau de bord des favoris** : température, émoji et pastille de risque par lieu, en une requête groupée
+
 ## Prochaines priorités (validées avec l'utilisateur le 16/08/2026)
 
-1. **Tableau de bord des favoris** : température + alerte de chaque lieu d'un coup d'œil (plusieurs chantiers).
-2. **Réglages** : lieu d'ouverture (dernier lieu / favori principal / ma position — aujourd'hui toujours Paris), réglages du radar (vitesse, opacité, rafraîchissement auto 5 min), prévisions 7 jours avec graphique.
-3. **Vigilance officielle Météo-France** — ⚠️ bloqué : l'API publique renvoie 401, il faut créer une clé gratuite sur portail-api.meteofrance.fr (action utilisateur).
-4. **Scrubber temporel** sur la frise radar (le play/pause existe déjà).
-5. **Notifications push** locales quand l'alerte passe au niveau orage (PWA installée).
-6. Mode « chantier » partagé avec AXION dans un fichier JS commun (éviter la double maintenance).
+1. **Réglages** : lieu d'ouverture (dernier lieu / favori principal / ma position — aujourd'hui toujours Paris), réglages du radar (vitesse, opacité, rafraîchissement auto 5 min), prévisions 7 jours avec graphique.
+2. **Vigilance officielle Météo-France** — ⚠️ bloqué : l'API publique renvoie 401, il faut créer une clé gratuite sur portail-api.meteofrance.fr (action utilisateur).
+3. **Scrubber temporel** sur la frise radar (le play/pause existe déjà).
+4. **Notifications push** locales quand l'alerte passe au niveau orage (PWA installée).
+5. Mode « chantier » partagé avec AXION dans un fichier JS commun (éviter la double maintenance).
 
 _Note : couche satellite infrarouge RainViewer inutilisable pour l'instant (`satellite.infrared` renvoie 0 image)._
 

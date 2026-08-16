@@ -810,6 +810,79 @@
         renderFavorites();
     }
 
+    // ── Tableau de bord des favoris ─────────────────────────────────────────
+    // Une seule requête groupée (Open-Meteo accepte plusieurs coordonnées)
+    // donne la température et le risque de chaque lieu suivi.
+
+    let favWeather = {}, favWeatherKey = "", favWeatherAt = 0, favWeatherLoading = false;
+
+    function favKey(item) { return `${item.lat},${item.lon}`; }
+
+    function summarizeFavorite(d) {
+        const cur = d.current || {};
+        const info = getWeatherInfo(cur.weather_code);
+        let level = stormLevel(cur.weather_code);
+        let gust = cur.wind_gusts_10m || 0, prob = 0, cape = 0;
+
+        const H = d.hourly;
+        if (H && H.time) {
+            const now = new Date();
+            let s = H.time.findIndex(t => new Date(t) >= now);
+            if (s === -1) s = 0;
+            for (let i = s; i < s + 12 && i < H.time.length; i++) {
+                level = Math.max(level, stormLevel(H.weather_code[i]));
+                if (H.precipitation_probability) prob = Math.max(prob, H.precipitation_probability[i] || 0);
+                if (H.wind_gusts_10m)            gust = Math.max(gust, H.wind_gusts_10m[i] || 0);
+                if (H.cape)                      cape = Math.max(cape, H.cape[i] || 0);
+            }
+        }
+
+        let badge = null;
+        if (level >= 2)          badge = { label: "orage",     color: "#c084fc" };
+        else if (gust >= 50)     badge = { label: `${Math.round(gust)} km/h`, color: "#fbbf24" };
+        else if (prob >= 60 || level >= 1) badge = { label: "pluie", color: "#38bdf8" };
+        else if (cape >= 1000)   badge = { label: "instable",  color: "#fbbf24" };
+
+        return {
+            temp: cur.temperature_2m != null ? Math.round(cur.temperature_2m) : null,
+            emoji: info.emoji,
+            badge
+        };
+    }
+
+    async function refreshFavoritesWeather() {
+        const favorites = getFavorites();
+        if (!favorites.length || favWeatherLoading) return;
+
+        const key = favorites.map(favKey).join("|");
+        if (key === favWeatherKey && Date.now() - favWeatherAt < 10 * 60 * 1000) return;
+
+        favWeatherLoading = true;
+        try {
+            const url = "https://api.open-meteo.com/v1/forecast"
+                + `?latitude=${favorites.map(f => f.lat).join(",")}`
+                + `&longitude=${favorites.map(f => f.lon).join(",")}`
+                + "&current=temperature_2m,weather_code,wind_gusts_10m"
+                + "&hourly=weather_code,precipitation_probability,wind_gusts_10m,cape"
+                + "&forecast_days=1&timezone=auto";
+            const response = await fetch(url);
+            const payload = await response.json();
+            const list = Array.isArray(payload) ? payload : [payload];
+
+            favWeather = {};
+            favorites.forEach((item, i) => {
+                if (list[i]) favWeather[favKey(item)] = summarizeFavorite(list[i]);
+            });
+            favWeatherKey = key;
+            favWeatherAt = Date.now();
+            renderFavorites();   // ré-affiche avec les données
+        } catch (e) {
+            console.error("Météo des favoris indisponible :", e);
+        } finally {
+            favWeatherLoading = false;
+        }
+    }
+
     function renderFavorites() {
         const container = document.getElementById("favorites-list");
         const favorites = getFavorites();
@@ -826,15 +899,25 @@
         }
 
         favorites.forEach((item, index) => {
+            const w = favWeather[favKey(item)];
             const div = document.createElement("div");
             div.className =
-                "favorite-card flex items-center justify-between gap-3 bg-slate-800/70 border border-slate-700 rounded-2xl px-3 py-2 cursor-pointer";
+                "favorite-card flex items-center gap-3 bg-slate-800/70 border border-slate-700 rounded-2xl px-3 py-2 cursor-pointer";
+
+            const badge = w && w.badge
+                ? `<span class="text-xs px-1.5 py-0.5 rounded-md shrink-0"
+                         style="background:${w.badge.color}22;color:${w.badge.color}">${w.badge.label}</span>`
+                : "";
 
             div.innerHTML = `
-                <div class="min-w-0">
+                <div class="text-xl shrink-0 w-6 text-center">${w ? w.emoji : ""}</div>
+                <div class="min-w-0 flex-1">
                     <div class="font-medium text-sm truncate">${item.name}</div>
-                    <div class="text-xs text-slate-400 truncate">${item.country || ""}</div>
+                    <div class="text-xs text-slate-400 truncate flex items-center gap-1.5">
+                        ${badge || `<span class="truncate">${item.country || ""}</span>`}
+                    </div>
                 </div>
+                <div class="font-semibold text-sm shrink-0">${w && w.temp != null ? w.temp + "°" : ""}</div>
                 <button class="text-slate-500 hover:text-red-300 shrink-0">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -855,6 +938,8 @@
 
             container.appendChild(div);
         });
+
+        refreshFavoritesWeather();   // se coupe d'elle-même si le cache est frais
     }
 
     async function loadWeather(lat, lon, cityName, country = "") {

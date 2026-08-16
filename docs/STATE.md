@@ -1,8 +1,23 @@
 # OrageRadar — état du projet
 
-_Dernière mise à jour : 16 août 2026 (soir, cycle 6)_
+_Dernière mise à jour : 16 août 2026 (soir, cycle 7)_
 
-## Dernier cycle — comparaison des modèles de prévision
+## Dernier cycle — tableau de bord des favoris
+
+**Objectif** (priorité n° 1 restante) : voir l'état de tous les lieux suivis sans cliquer l'un après l'autre — pour AXION, surveiller plusieurs chantiers d'un coup d'œil.
+
+**Trouvaille** : Open-Meteo accepte **plusieurs coordonnées dans une seule requête** (`latitude=48.85,43.62&longitude=2.35,3.51`) et renvoie un tableau de résultats. Un seul appel réseau suffit donc pour tous les favoris, quel qu'en soit le nombre.
+
+**Rendu par favori** : émoji du temps, nom, température, et une pastille de risque quand il y en a un — « orage » (violet), rafales en km/h, « pluie », ou « instable » (CAPE ≥ 1000).
+
+**Garde-fous** :
+- `renderFavorites()` est appelée à chaque changement de lieu ; un **cache de 10 min** avec signature de la liste évite de refaire l'appel à chaque rendu. Vérifié : 5 rendus consécutifs = 0 requête, ajout d'un favori = exactement 1 requête.
+- `favWeatherLoading` empêche la boucle `renderFavorites → refresh → renderFavorites`.
+- Un seul favori : l'API renvoie un **objet** et non un tableau — normalisé par `Array.isArray`.
+
+**Tests** : 4 favoris dont Mexico (pastille « orage » correcte), favori unique, clic (navigation OK), suppression, ajout. Alerte, anticipation et comparaison de modèles vérifiées intactes dans les deux apps.
+
+## Cycle précédent — comparaison des modèles de prévision
 
 **Objectif** (priorité n° 1 validée avec l'utilisateur) : croiser plusieurs sources, ce qu'aucune app grand public ne propose. Répond à « il est intéressant de pouvoir vérifier avec plusieurs technologies ».
 
