@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OrageRadar Intelligence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+body{background:#020617;color:#e2e8f0}.glass{background:rgba(15,23,42,.86);border:1px solid #334155}.bar{height:8px;border-radius:999px;background:#1e293b;overflow:hidden}.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#0ea5e9,#8b5cf6)}.ring{width:108px;height:108px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#8b5cf6 var(--p),#1e293b 0)}.ring:after{content:"";width:82px;height:82px;border-radius:50%;background:#0f172a;position:absolute}.ring span{position:relative;z-index:1;font-size:1.4rem;font-weight:800}.pulse{animation:pulse 1.4s infinite}@keyframes pulse{50%{opacity:.45}}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-6xl mx-auto px-4 py-6">
+  <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+    <div>
+      <div class="text-xs uppercase tracking-[.25em] text-violet-300">OrageRadar Weather Intelligence</div>
+      <h1 class="text-3xl font-bold mt-1">Consensus météo multi-modèles</h1>
+      <p class="text-slate-400 mt-1">Une lecture OrageRadar construite à partir de plusieurs modèles, pas une simple valeur isolée.</p>
+    </div>
+    <a href="./" class="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-sm"><i class="fa-solid fa-arrow-left mr-2"></i>Retour à OrageRadar</a>
+  </div>
+
+  <div class="glass rounded-3xl p-5 mb-6">
+    <div class="grid md:grid-cols-[1fr_auto] gap-3">
+      <div class="relative">
+        <input id="city-input" value="Paris" class="w-full bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3 text-base outline-none focus:border-violet-500" placeholder="Ville...">
+        <div id="suggestions" class="hidden absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden z-20"></div>
+      </div>
+      <button id="analyze" class="px-5 py-3 rounded-2xl bg-violet-600 hover:bg-violet-500 font-semibold"><i class="fa-solid fa-brain mr-2"></i>Analyser</button>
+    </div>
+  </div>
+
+  <div id="loading" class="hidden glass rounded-3xl p-10 text-center mb-6"><i class="fa-solid fa-satellite-dish text-3xl text-violet-300 pulse"></i><div class="mt-3 text-slate-400">Interrogation des modèles météo...</div></div>
+
+  <div id="dashboard" class="hidden space-y-6">
+    <div class="grid xl:grid-cols-12 gap-6">
+      <div class="glass rounded-3xl p-6 xl:col-span-5">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div id="place" class="text-2xl font-semibold"></div>
+            <div id="horizon" class="text-sm text-slate-400 mt-1">Consensus sur les 6 prochaines heures</div>
+          </div>
+          <div id="verdict-icon" class="text-4xl">🌤️</div>
+        </div>
+        <div class="grid grid-cols-2 gap-4 mt-6">
+          <div class="bg-slate-950/70 rounded-2xl p-4"><div class="text-xs text-slate-400">Risque de pluie</div><div id="rain-prob" class="text-3xl font-bold mt-1">--%</div></div>
+          <div class="bg-slate-950/70 rounded-2xl p-4"><div class="text-xs text-slate-400">Risque orageux</div><div id="storm-prob" class="text-3xl font-bold mt-1">--%</div></div>
+        </div>
+        <div id="verdict" class="mt-4 rounded-2xl bg-violet-500/10 border border-violet-400/20 px-4 py-3 text-sm"></div>
+      </div>
+
+      <div class="glass rounded-3xl p-6 xl:col-span-3 flex flex-col items-center justify-center">
+        <div class="text-sm text-slate-400 mb-3">OrageRadar Confidence</div>
+        <div id="confidence-ring" class="ring relative" style="--p:0%"><span id="confidence">0%</span></div>
+        <div id="confidence-label" class="mt-3 text-sm font-medium"></div>
+      </div>
+
+      <div class="glass rounded-3xl p-6 xl:col-span-4">
+        <div class="font-semibold mb-4"><i class="fa-solid fa-wave-square text-sky-400 mr-2"></i>Signaux</div>
+        <div class="space-y-4">
+          <div><div class="flex justify-between text-sm mb-1"><span>Accord des modèles</span><span id="agreement-v">--%</span></div><div class="bar"><div id="agreement-b" class="fill" style="width:0%"></div></div></div>
+          <div><div class="flex justify-between text-sm mb-1"><span>Instabilité convective</span><span id="instability-v">--%</span></div><div class="bar"><div id="instability-b" class="fill" style="width:0%"></div></div></div>
+          <div><div class="flex justify-between text-sm mb-1"><span>Signal précipitations</span><span id="precip-v">--%</span></div><div class="bar"><div id="precip-b" class="fill" style="width:0%"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass rounded-3xl p-6">
+      <div class="flex items-center justify-between gap-3 mb-4"><h2 class="font-semibold"><i class="fa-solid fa-code-compare text-violet-300 mr-2"></i>Ce que disent les modèles</h2><span class="text-xs text-slate-500">AROME · ECMWF · ICON · GFS</span></div>
+      <div id="models" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4"></div>
+    </div>
+
+    <div class="glass rounded-3xl p-6">
+      <h2 class="font-semibold mb-4"><i class="fa-solid fa-circle-info text-sky-400 mr-2"></i>Pourquoi ce score ?</h2>
+      <div id="explain" class="grid md:grid-cols-3 gap-3 text-sm"></div>
+    </div>
+  </div>
+
+  <div id="error" class="hidden rounded-2xl bg-red-500/10 border border-red-400/20 p-4 text-red-200"></div>
+</div>
+<script>
+const MODELS=[
+ {id:'meteofrance_arome_france',name:'AROME',detail:'Météo-France · haute résolution',local:true},
+ {id:'ecmwf_ifs025',name:'ECMWF IFS',detail:'Centre européen'},
+ {id:'icon_eu',name:'ICON',detail:'DWD · Europe'},
+ {id:'gfs_seamless',name:'GFS',detail:'NOAA · global'}
+];
+let selected={name:'Paris',country:'France',lat:48.8566,lon:2.3522};
+const $=id=>document.getElementById(id);
+function clamp(v,a=0,b=100){return Math.max(a,Math.min(b,v))}
+function setBar(id,v){$(id+'-v').textContent=Math.round(v)+'%';$(id+'-b').style.width=clamp(v)+'%'}
+function debounce(fn,d=250){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}}
+
+async function suggestions(){
+ const q=$('city-input').value.trim(); if(q.length<2){$('suggestions').classList.add('hidden');return}
+ try{const r=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=6&language=fr&format=json');const d=await r.json();
+ const box=$('suggestions'); box.innerHTML=''; (d.results||[]).forEach(p=>{const b=document.createElement('button');b.className='w-full text-left px-4 py-3 hover:bg-slate-800 border-b border-slate-800 last:border-0';b.textContent=p.name+(p.admin1?' · '+p.admin1:'')+' — '+(p.country||'');b.onclick=()=>{selected={name:p.name,country:p.country||'',lat:p.latitude,lon:p.longitude};$('city-input').value=p.name;box.classList.add('hidden');analyze()};box.appendChild(b)});box.classList.toggle('hidden',!d.results?.length)}catch(e){}
+}
+$('city-input').addEventListener('input',debounce(suggestions));
+$('city-input').addEventListener('keydown',e=>{if(e.key==='Enter')analyze()});
+$('analyze').addEventListener('click',analyze);
+
+async function fetchModels(models){
+ const url='https://api.open-meteo.com/v1/forecast?latitude='+selected.lat+'&longitude='+selected.lon+'&hourly=precipitation,cape,wind_gusts_10m&models='+models.map(m=>m.id).join(',')+'&forecast_days=2&timezone=auto';
+ const r=await fetch(url);const text=await r.text();return JSON.parse(text)
+}
+async function analyze(){
+ $('suggestions').classList.add('hidden');$('error').classList.add('hidden');$('dashboard').classList.add('hidden');$('loading').classList.remove('hidden');
+ let models=MODELS,data;
+ try{try{data=await fetchModels(models)}catch(_){models=MODELS.filter(m=>!m.local);data=await fetchModels(models)}
+ const H=data.hourly;if(!H)throw new Error('Données indisponibles');const now=new Date();let s=H.time.findIndex(t=>new Date(t)>=now);if(s<0)s=0;
+ const rows=[];models.forEach(m=>{const p=H['precipitation_'+m.id],c=H['cape_'+m.id],g=H['wind_gusts_10m_'+m.id];if(!p)return;const pw=p.slice(s,s+6).filter(Number.isFinite);if(!pw.length)return;const cw=c?c.slice(s,s+6).filter(Number.isFinite):[];const gw=g?g.slice(s,s+6).filter(Number.isFinite):[];rows.push({...m,mm:pw.reduce((a,b)=>a+b,0),cape:cw.length?Math.max(...cw):0,gust:gw.length?Math.max(...gw):0})});
+ if(rows.length<2)throw new Error('Pas assez de modèles disponibles pour ce lieu.');render(rows)
+ }catch(e){$('error').textContent='Analyse impossible : '+e.message;$('error').classList.remove('hidden')}finally{$('loading').classList.add('hidden')}
+}
+function render(rows){
+ const wet=rows.filter(r=>r.mm>=.5),storm=rows.filter(r=>r.cape>=1000),n=rows.length;
+ const wetRatio=wet.length/n*100,stormRatio=storm.length/n*100;
+ const mmMean=rows.reduce((a,r)=>a+r.mm,0)/n;const variance=rows.reduce((a,r)=>a+Math.pow(r.mm-mmMean,2),0)/n;const spread=Math.sqrt(variance);
+ const agreement=clamp(100-spread*18-(wetRatio>0&&wetRatio<100?18:0));
+ const maxCape=Math.max(...rows.map(r=>r.cape));const instability=clamp(maxCape/20);
+ const precipSignal=clamp(wetRatio*.7+clamp(mmMean*12)*.3);
+ const confidence=clamp(agreement*.62+Math.min(100,n/4*100)*.23+(100-Math.abs(50-wetRatio))*0.15);
+ const rainProb=clamp(wetRatio*.72+Math.min(28,mmMean*8));
+ const stormProb=clamp(stormRatio*.62+instability*.38*(wet.length?1:.55));
+ $('place').textContent=selected.name+(selected.country?' — '+selected.country:'');$('rain-prob').textContent=Math.round(rainProb)+'%';$('storm-prob').textContent=Math.round(stormProb)+'%';
+ $('confidence').textContent=Math.round(confidence)+'%';$('confidence-ring').style.setProperty('--p',Math.round(confidence)+'%');$('confidence-label').textContent=confidence>=80?'Confiance élevée':confidence>=60?'Confiance modérée':'Prévision incertaine';
+ setBar('agreement',agreement);setBar('instability',instability);setBar('precip',precipSignal);
+ let icon='🌤️',txt;if(stormProb>=60){icon='⛈️';txt='Signal orageux significatif : plusieurs modèles combinent précipitations et forte instabilité.'}else if(rainProb>=65){icon='🌧️';txt='Pluie probable : la majorité des modèles convergent vers un scénario humide.'}else if(wet.length===0){icon='☀️';txt='Signal sec dominant : aucun modèle ne dépasse le seuil de pluie sur les 6 prochaines heures.'}else{icon='🌦️';txt='Scénario partagé : les modèles ne convergent pas suffisamment, la prudence reste de mise.'}
+ $('verdict-icon').textContent=icon;$('verdict').textContent=txt;
+ $('models').innerHTML='';rows.forEach(r=>{const d=document.createElement('div');d.className='bg-slate-950/70 border border-slate-800 rounded-2xl p-4';const wet=r.mm>=.5;d.innerHTML='<div class="flex justify-between gap-2"><div><div class="font-semibold">'+r.name+'</div><div class="text-xs text-slate-500">'+r.detail+'</div></div><div class="text-xl">'+(r.cape>=1000?'⚡':wet?'🌧️':'☁️')+'</div></div><div class="grid grid-cols-3 gap-2 mt-4 text-center"><div><div class="text-xs text-slate-500">Pluie</div><div class="font-semibold">'+r.mm.toFixed(1)+' mm</div></div><div><div class="text-xs text-slate-500">CAPE</div><div class="font-semibold">'+Math.round(r.cape)+'</div></div><div><div class="text-xs text-slate-500">Rafales</div><div class="font-semibold">'+Math.round(r.gust)+' km/h</div></div></div>'; $('models').appendChild(d)});
+ const ex=[['Convergence',wet.length+'/'+n+' modèles annoncent au moins 0,5 mm.'],['Dispersion','Écart-type des cumuls : '+spread.toFixed(1)+' mm. Plus il est faible, plus les modèles convergent.'],['Instabilité','CAPE maximum : '+Math.round(maxCape)+' J/kg. Le CAPE seul ne suffit pas : il est croisé avec le signal de pluie.']];$('explain').innerHTML=ex.map(x=>'<div class="bg-slate-950/60 rounded-2xl p-4"><div class="font-medium mb-1">'+x[0]+'</div><div class="text-slate-400">'+x[1]+'</div></div>').join('');
+ $('dashboard').classList.remove('hidden');
+}
+analyze();
+</script>
+</body>
+</html>
