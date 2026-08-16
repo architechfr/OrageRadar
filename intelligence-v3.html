@@ -1,1 +1,128 @@
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>OrageRadar Intelligence v3</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="./assets/intelligence-v2.css"></head><body><div class="max-w-7xl mx-auto px-4 py-6"><header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6"><div><div class="text-xs uppercase tracking-[.3em] text-sky-300">OrageRadar Weather Intelligence v3</div><h1 class="text-3xl md:text-4xl font-black mt-1 tracking-tight">Le ciel analysé par des modèles et des centaines de scénarios.</h1><p class="text-slate-400 mt-2 max-w-3xl">Prévisions déterministes + ensembles probabilistes + modèles IA + radar temps réel. Le moteur mesure aussi le désaccord pour savoir quand ne pas être trop sûr.</p></div><a href="./" class="px-4 py-2.5 rounded-2xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-sm shrink-0"><i class="fa-solid fa-arrow-left mr-2"></i>Retour à OrageRadar</a></header><section class="glass heroGlow rounded-[28px] p-5 mb-6"><div class="grid lg:grid-cols-[1fr_auto] gap-3"><div class="relative"><input id="city-input" value="Paris" class="w-full bg-slate-950/80 border border-slate-700 rounded-2xl px-4 py-3.5 text-base outline-none focus:border-sky-400" placeholder="Ville..."><div id="suggestions" class="hidden absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden z-[1000] shadow-2xl"></div></div><button id="analyze" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-violet-600 hover:brightness-110 font-bold shadow-lg shadow-sky-950/40"><i class="fa-solid fa-brain mr-2"></i>Lancer l'analyse</button></div></section><div id="loading" class="hidden glass rounded-3xl p-12 text-center mb-6"><i class="fa-solid fa-satellite-dish text-4xl text-sky-300 pulse"></i><div class="mt-4 text-slate-300 font-semibold">Interrogation des modèles, ensembles et du radar...</div><div class="text-sm text-slate-500 mt-1">AROME · ECMWF · ICON · GFS · UKMO · GEM · JMA · AIFS · GEFS · EPS · WeatherNext</div></div><div id="error" class="hidden rounded-2xl bg-red-500/10 border border-red-400/20 p-4 text-red-200 mb-6"></div><main id="dashboard" class="hidden space-y-6"><section class="grid xl:grid-cols-12 gap-6"><div class="glass rounded-[28px] p-6 xl:col-span-5"><div class="flex items-start justify-between gap-5"><div class="min-w-0"><div id="place" class="text-2xl font-bold truncate"></div><div id="condition" class="text-slate-400 mt-1"></div><div class="flex flex-wrap gap-2 mt-4"><span id="temp-pill" class="tinyPill rounded-full px-3 py-1 text-sm"></span><span id="cloud-pill" class="tinyPill rounded-full px-3 py-1 text-sm"></span><span id="gust-pill" class="tinyPill rounded-full px-3 py-1 text-sm"></span></div></div><div class="weather-orb shrink-0"><div id="weather-icon" class="text-6xl">🌤️</div></div></div><div class="grid grid-cols-2 gap-4 mt-6"><div class="bg-slate-950/70 rounded-2xl p-4 border border-slate-800"><div class="text-xs text-slate-400">Risque pluie · 6 h</div><div id="rain-prob" class="text-3xl font-black mt-1">--%</div></div><div class="bg-slate-950/70 rounded-2xl p-4 border border-slate-800"><div class="text-xs text-slate-400">Risque orageux · 6 h</div><div id="storm-prob" class="text-3xl font-black mt-1">--%</div></div></div><div id="verdict" class="mt-4 rounded-2xl bg-sky-500/10 border border-sky-400/20 px-4 py-3 text-sm leading-relaxed"></div></div><div class="glass rounded-[28px] p-6 xl:col-span-3 flex flex-col items-center justify-center text-center"><div class="text-sm text-slate-400 mb-3">OrageRadar Confidence</div><div id="confidence-ring" class="ring" style="--p:0%"><span id="confidence">0%</span></div><div id="confidence-label" class="mt-4 font-semibold"></div><div id="source-count" class="text-xs text-slate-500 mt-1"></div></div><div class="glass rounded-[28px] p-6 xl:col-span-4"><div class="font-semibold mb-5"><i class="fa-solid fa-wave-square text-sky-400 mr-2"></i>Signaux de confiance</div><div class="space-y-5"><div><div class="flex justify-between text-sm mb-1.5"><span>Accord déterministe</span><span id="agreement-v">--%</span></div><div class="bar"><div id="agreement-b" class="fill"></div></div></div><div><div class="flex justify-between text-sm mb-1.5"><span>Confiance ensembles</span><span id="ensemble-v">--%</span></div><div class="bar"><div id="ensemble-b" class="fill"></div></div></div><div><div class="flex justify-between text-sm mb-1.5"><span>Signal précipitations</span><span id="precip-v">--%</span></div><div class="bar"><div id="precip-b" class="fill"></div></div></div><div><div class="flex justify-between text-sm mb-1.5"><span>Signal convectif</span><span id="instability-v">--%</span></div><div class="bar"><div id="instability-b" class="fill"></div></div></div><div><div class="flex justify-between text-sm mb-1.5"><span>Couverture globale</span><span id="coverage-v">--%</span></div><div class="bar"><div id="coverage-b" class="fill"></div></div></div></div></div></section><section class="glass rounded-[28px] overflow-hidden"><div class="p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800"><div><h2 class="font-bold text-lg"><i class="fa-solid fa-tower-broadcast text-red-400 mr-2"></i>Radar précipitations</h2><div class="text-sm text-slate-500">Observation et nowcast temps réel, centrés sur la ville choisie.</div></div><div id="radar-time" class="text-sm text-slate-400"></div></div><div id="radar-map"></div></section><section class="glass rounded-[28px] p-6"><div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5"><div><h2 class="font-bold text-lg"><i class="fa-solid fa-code-compare text-violet-300 mr-2"></i>Prévisions déterministes</h2><div class="text-sm text-slate-500">Chaque centre donne son scénario principal. Le moteur les pondère et mesure leur dispersion.</div></div><span id="model-badge" class="tinyPill rounded-full px-3 py-1 text-xs"></span></div><div id="models" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4"></div></section><section class="glass rounded-[28px] p-6"><div class="mb-5"><h2 class="font-bold text-lg"><i class="fa-solid fa-diagram-project text-fuchsia-300 mr-2"></i>Ensembles probabilistes & IA</h2><div class="text-sm text-slate-500">ECMWF EPS, AIFS Ensemble, GEFS, ICON EPS, MOGREPS, GEM Ensemble et WeatherNext 2 décrivent plusieurs futurs possibles.</div></div><div id="ensembles" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4"></div></section><section class="grid lg:grid-cols-2 gap-6"><div class="glass rounded-[28px] p-6"><h2 class="font-bold mb-4"><i class="fa-solid fa-brain text-pink-300 mr-2"></i>Pourquoi ce score ?</h2><div id="explain" class="space-y-3 text-sm"></div></div><div class="glass rounded-[28px] p-6"><h2 class="font-bold mb-4"><i class="fa-solid fa-layer-group text-sky-300 mr-2"></i>Réseau de modèles</h2><div id="sources" class="flex flex-wrap gap-2"></div><p class="text-xs text-slate-500 mt-4">Le moteur préfère avouer une incertitude plutôt que fabriquer une certitude. Les poids deviendront ensuite dynamiques grâce aux performances historiques locales.</p></div></section></main></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="./assets/intelligence-v2-radar.js"></script><script src="./assets/intelligence-v3.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>OrageRadar Intelligence v3.1</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="./assets/intelligence-v2.css">
+</head>
+<body>
+<div class="max-w-7xl mx-auto px-4 py-6">
+  <header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+    <div>
+      <div class="text-xs uppercase tracking-[.3em] text-sky-300">OrageRadar Weather Intelligence v3.1</div>
+      <h1 class="text-3xl md:text-4xl font-black mt-1 tracking-tight">Une réponse claire d'abord. Les modèles ensuite.</h1>
+      <p class="text-slate-400 mt-2 max-w-3xl">OrageRadar résume d'abord ce qui est attendu, où et jusqu'à quand. Les détails déterministes, probabilistes et IA restent disponibles pour l'analyse experte.</p>
+    </div>
+    <a href="./" class="px-4 py-2.5 rounded-2xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-sm shrink-0"><i class="fa-solid fa-arrow-left mr-2"></i>Retour à OrageRadar</a>
+  </header>
+
+  <section class="glass heroGlow rounded-[28px] p-5 mb-6">
+    <div class="grid lg:grid-cols-[1fr_auto] gap-3">
+      <div class="relative">
+        <input id="city-input" value="Paris" class="w-full bg-slate-950/80 border border-slate-700 rounded-2xl px-4 py-3.5 text-base outline-none focus:border-sky-400" placeholder="Ville, commune...">
+        <div id="suggestions" class="hidden absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden z-[1000] shadow-2xl"></div>
+      </div>
+      <button id="analyze" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-violet-600 hover:brightness-110 font-bold shadow-lg shadow-sky-950/40"><i class="fa-solid fa-brain mr-2"></i>Lancer l'analyse</button>
+    </div>
+    <div class="text-xs text-slate-500 mt-2">Vous pouvez cliquer une suggestion ou simplement saisir une commune puis lancer l'analyse.</div>
+  </section>
+
+  <div id="loading" class="hidden glass rounded-3xl p-12 text-center mb-6">
+    <i class="fa-solid fa-satellite-dish text-4xl text-sky-300 pulse"></i>
+    <div class="mt-4 text-slate-300 font-semibold">Localisation puis interrogation des modèles, ensembles et du radar...</div>
+    <div class="text-sm text-slate-500 mt-1">AROME · ECMWF · ICON · GFS · UKMO · GEM · JMA · AIFS · GEFS · EPS · WeatherNext</div>
+  </div>
+  <div id="error" class="hidden rounded-2xl bg-red-500/10 border border-red-400/20 p-4 text-red-200 mb-6"></div>
+
+  <main id="dashboard" class="hidden space-y-6">
+    <section id="quick-read" class="glass rounded-[28px] p-6 border border-sky-500/20">
+      <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <div class="text-xs uppercase tracking-[.22em] text-sky-300">Lecture rapide</div>
+          <h2 id="quick-title" class="text-2xl font-black mt-1"></h2>
+          <div id="analysis-window" class="text-sm text-slate-400 mt-1"></div>
+        </div>
+        <div id="quick-confidence" class="tinyPill rounded-full px-4 py-2 text-sm font-semibold shrink-0"></div>
+      </div>
+      <div class="grid md:grid-cols-3 gap-3 mt-5">
+        <div class="bg-slate-950/65 border border-slate-800 rounded-2xl p-4"><div class="text-xs text-slate-500 uppercase tracking-wide">Ce qui est attendu</div><div id="quick-weather" class="font-semibold mt-1"></div></div>
+        <div class="bg-slate-950/65 border border-slate-800 rounded-2xl p-4"><div class="text-xs text-slate-500 uppercase tracking-wide">Quand ?</div><div id="quick-when" class="font-semibold mt-1"></div></div>
+        <div class="bg-slate-950/65 border border-slate-800 rounded-2xl p-4"><div class="text-xs text-slate-500 uppercase tracking-wide">À retenir</div><div id="quick-action" class="font-semibold mt-1"></div></div>
+      </div>
+    </section>
+
+    <section class="grid xl:grid-cols-12 gap-6">
+      <div class="glass rounded-[28px] p-6 xl:col-span-5">
+        <div class="flex items-start justify-between gap-5">
+          <div class="min-w-0">
+            <div id="place" class="text-2xl font-bold truncate"></div>
+            <div id="condition" class="text-slate-400 mt-1"></div>
+            <div id="place-horizon" class="text-xs text-sky-300 mt-2"></div>
+            <div class="flex flex-wrap gap-2 mt-4"><span id="temp-pill" class="tinyPill rounded-full px-3 py-1 text-sm"></span><span id="cloud-pill" class="tinyPill rounded-full px-3 py-1 text-sm"></span><span id="gust-pill" class="tinyPill rounded-full px-3 py-1 text-sm"></span></div>
+          </div>
+          <div class="weather-orb shrink-0"><div id="weather-icon" class="text-6xl">🌤️</div></div>
+        </div>
+        <div class="grid grid-cols-2 gap-4 mt-6">
+          <div class="bg-slate-950/70 rounded-2xl p-4 border border-slate-800"><div class="text-xs text-slate-400">Pluie d'ici 6 h</div><div id="rain-prob" class="text-3xl font-black mt-1">--%</div><div class="text-[11px] text-slate-500 mt-1">Probabilité issue du consensus</div></div>
+          <div class="bg-slate-950/70 rounded-2xl p-4 border border-slate-800"><div class="text-xs text-slate-400">Orage d'ici 6 h</div><div id="storm-prob" class="text-3xl font-black mt-1">--%</div><div class="text-[11px] text-slate-500 mt-1">Pluie + instabilité + codes orageux</div></div>
+        </div>
+        <div id="verdict" class="mt-4 rounded-2xl bg-sky-500/10 border border-sky-400/20 px-4 py-3 text-sm leading-relaxed"></div>
+      </div>
+
+      <div class="glass rounded-[28px] p-6 xl:col-span-3 flex flex-col items-center justify-center text-center">
+        <div class="text-sm text-slate-400 mb-1">Fiabilité de cette analyse</div>
+        <div class="text-[11px] text-slate-500 mb-3">Ce score n'est pas un risque météo : il mesure la confiance dans le scénario.</div>
+        <div id="confidence-ring" class="ring" style="--p:0%"><span id="confidence">0%</span></div>
+        <div id="confidence-label" class="mt-4 font-semibold"></div>
+        <div id="source-count" class="text-xs text-slate-500 mt-1"></div>
+      </div>
+
+      <div class="glass rounded-[28px] p-6 xl:col-span-4">
+        <div class="font-semibold mb-1"><i class="fa-solid fa-wave-square text-sky-400 mr-2"></i>Pourquoi ce niveau de confiance ?</div>
+        <div class="text-xs text-slate-500 mb-5">Lecture technique : plus les modèles sont cohérents et nombreux, plus la confiance monte.</div>
+        <div class="space-y-5">
+          <div><div class="flex justify-between text-sm mb-1.5"><span>Accord des modèles principaux</span><span id="agreement-v">--%</span></div><div class="bar"><div id="agreement-b" class="fill"></div></div></div>
+          <div><div class="flex justify-between text-sm mb-1.5"><span>Stabilité des ensembles</span><span id="ensemble-v">--%</span></div><div class="bar"><div id="ensemble-b" class="fill"></div></div></div>
+          <div><div class="flex justify-between text-sm mb-1.5"><span>Signal pluie</span><span id="precip-v">--%</span></div><div class="bar"><div id="precip-b" class="fill"></div></div></div>
+          <div><div class="flex justify-between text-sm mb-1.5"><span>Signal orage / convection</span><span id="instability-v">--%</span></div><div class="bar"><div id="instability-b" class="fill"></div></div></div>
+          <div><div class="flex justify-between text-sm mb-1.5"><span>Sources disponibles</span><span id="coverage-v">--%</span></div><div class="bar"><div id="coverage-b" class="fill"></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="glass rounded-[28px] overflow-hidden">
+      <div class="p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800">
+        <div><h2 class="font-bold text-lg"><i class="fa-solid fa-tower-broadcast text-red-400 mr-2"></i>Radar précipitations</h2><div class="text-sm text-slate-500">Ce qui est observé autour du lieu choisi, avec animation passée et nowcast lorsqu'il est disponible.</div></div>
+        <div id="radar-time" class="text-sm text-slate-400"></div>
+      </div>
+      <div id="radar-map"></div>
+    </section>
+
+    <section class="glass rounded-[28px] p-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+        <div><h2 class="font-bold text-lg"><i class="fa-solid fa-code-compare text-violet-300 mr-2"></i>Détails experts — scénarios déterministes</h2><div class="text-sm text-slate-500">Chaque carte décrit les 6 prochaines heures à partir du moment de l'analyse.</div></div>
+        <span id="model-badge" class="tinyPill rounded-full px-3 py-1 text-xs"></span>
+      </div>
+      <div id="models" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4"></div>
+    </section>
+
+    <section class="glass rounded-[28px] p-6">
+      <div class="mb-5"><h2 class="font-bold text-lg"><i class="fa-solid fa-diagram-project text-fuchsia-300 mr-2"></i>Détails experts — ensembles probabilistes & IA</h2><div class="text-sm text-slate-500">Les ensembles testent de nombreux futurs possibles : leur dispersion indique si le scénario est stable ou fragile.</div></div>
+      <div id="ensembles" class="grid md:grid-cols-2 xl:grid-cols-4 gap-4"></div>
+    </section>
+
+    <section class="grid lg:grid-cols-2 gap-6">
+      <div class="glass rounded-[28px] p-6"><h2 class="font-bold mb-4"><i class="fa-solid fa-brain text-pink-300 mr-2"></i>Décryptage expert</h2><div id="explain" class="space-y-3 text-sm"></div></div>
+      <div class="glass rounded-[28px] p-6"><h2 class="font-bold mb-4"><i class="fa-solid fa-layer-group text-sky-300 mr-2"></i>Réseau de modèles</h2><div id="sources" class="flex flex-wrap gap-2"></div><p class="text-xs text-slate-500 mt-4">Une source indisponible est écartée. Le moteur préfère afficher une couverture réduite plutôt que fabriquer une certitude.</p></div>
+    </section>
+  </main>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="./assets/intelligence-v2-radar.js"></script>
+<script src="./assets/intelligence-v3.js"></script>
+</body>
+</html>
