@@ -1,8 +1,25 @@
 # OrageRadar — état du projet
 
-_Dernière mise à jour : 16 août 2026 (soir, cycle 5)_
+_Dernière mise à jour : 16 août 2026 (soir, cycle 6)_
 
-## Dernier cycle — anticipation « la pluie arrive dans X min »
+## Dernier cycle — comparaison des modèles de prévision
+
+**Objectif** (priorité n° 1 validée avec l'utilisateur) : croiser plusieurs sources, ce qu'aucune app grand public ne propose. Répond à « il est intéressant de pouvoir vérifier avec plusieurs technologies ».
+
+**Modèles interrogés** via `models=` d'Open-Meteo (gratuit, sans clé) : AROME (Météo-France, 1,3 km — le plus fin sur les orages en France), ECMWF (référence européenne), ICON (Allemagne, Europe), GFS (États-Unis, global). Fenêtre : cumul de précipitations et CAPE max sur 6 h.
+
+**Rendu** : un verdict d'ensemble puis une ligne par modèle (barre proportionnelle, cumul en mm, éclair si CAPE ≥ 1000).
+- accord sec : « Les 4 modèles s'accordent : pas de pluie attendue »
+- accord humide : « Les 4 modèles s'accordent : pluie attendue — prévision fiable »
+- désaccord : « Désaccord : 1 modèle sur 4 annonce de la pluie (GFS isolé) — prévision incertaine, surveiller le radar »
+
+**⚠️ Piège majeur découvert** : AROME est un modèle national. Interrogé hors de son domaine, Open-Meteo répond `"latitude":nan` — **ce n'est pas du JSON valide**, `JSON.parse` lève une exception et emporterait toute la fonctionnalité. Parade : `try/catch` puis nouvelle requête sans les modèles marqués `local`. Les modèles absents de la réponse (ICON hors d'Europe) sont simplement ignorés, et la carte se masque s'il reste moins de 2 modèles.
+
+**Autre garde-fou** : jeton de requête (`modelsRequestToken`) pour ignorer une réponse tardive si l'utilisateur a changé de lieu entre-temps.
+
+**Tests** : Campagnan (désaccord réel — GFS 2,5 mm contre 0 pour les 3 autres, cas idéal), Paris (accord + instabilité signalée par 1 modèle), Tokyo (repli effectif : AROME et ICON écartés, comparaison sur ECMWF/GFS). Anticipation et alerte orage vérifiées intactes. Aucune erreur en console hormis le service worker, propre au bac à sable local.
+
+## Cycle précédent — anticipation « la pluie arrive dans X min »
 
 **Objectif** : tenir la promesse du nom (« Anticipez les orages »). L'app disait le temps qu'il fait, pas quand il va changer.
 
