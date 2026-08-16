@@ -11,6 +11,7 @@ body{background:#020617;color:#e2e8f0}.glass{background:rgba(15,23,42,.86);borde
 </style>
 </head>
 <body class="min-h-screen">
+<!-- deploy-marker: intelligence-v1 -->
 <div class="max-w-6xl mx-auto px-4 py-6">
   <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
     <div>
@@ -91,7 +92,6 @@ const $=id=>document.getElementById(id);
 function clamp(v,a=0,b=100){return Math.max(a,Math.min(b,v))}
 function setBar(id,v){$(id+'-v').textContent=Math.round(v)+'%';$(id+'-b').style.width=clamp(v)+'%'}
 function debounce(fn,d=250){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}}
-
 async function suggestions(){
  const q=$('city-input').value.trim(); if(q.length<2){$('suggestions').classList.add('hidden');return}
  try{const r=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=6&language=fr&format=json');const d=await r.json();
@@ -100,7 +100,6 @@ async function suggestions(){
 $('city-input').addEventListener('input',debounce(suggestions));
 $('city-input').addEventListener('keydown',e=>{if(e.key==='Enter')analyze()});
 $('analyze').addEventListener('click',analyze);
-
 async function fetchModels(models){
  const url='https://api.open-meteo.com/v1/forecast?latitude='+selected.lat+'&longitude='+selected.lon+'&hourly=precipitation,cape,wind_gusts_10m&models='+models.map(m=>m.id).join(',')+'&forecast_days=2&timezone=auto';
  const r=await fetch(url);const text=await r.text();return JSON.parse(text)
