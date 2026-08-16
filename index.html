@@ -20,6 +20,9 @@
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         .suggestion-item:hover { background-color: #334155; }
         iframe { display: block; }
@@ -43,6 +46,17 @@
         /* Bandeau d'alerte orage / instabilité */
         .alert-storm { background: rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.40); color:#fcd34d; }
         .alert-clear { background: rgba(52,211,153,.10); border:1px solid rgba(52,211,153,.35); color:#6ee7b7; }
+        /* Carte radar autonome (Leaflet + RainViewer) — pas de point bleu parasite */
+        #radar-map { height: 650px; width: 100%; background: #0b1120; }
+        #radar-map .leaflet-container { background: #0b1120; }
+        #radar-timestamp {
+            position: absolute; bottom: 14px; left: 14px; z-index: 600;
+            background: rgba(15,23,42,.88); border: 1px solid #334155;
+            border-radius: 12px; padding: 6px 12px; font-size: 12px;
+        }
+        @media (max-width: 640px) {
+            #radar-map, #windy { height: 480px; }
+        }
     </style>
 </head>
 
@@ -202,8 +216,11 @@
             </div>
         </div>
 
-        <div class="rounded-2xl overflow-hidden border border-slate-700">
+        <div class="rounded-2xl overflow-hidden border border-slate-700 relative">
+            <div id="radar-map"></div>
+            <div id="radar-timestamp" class="hidden"></div>
             <iframe id="windy"
+                    class="hidden"
                     width="100%"
                     height="650"
                     frameborder="0"
@@ -439,6 +456,130 @@
         return configs[mode] || configs.radar;
     }
 
+    // ── Carte radar autonome (Leaflet + RainViewer) ─────────────────────────
+    // Remplace l'iframe Windy pour le mode « Radar animé » : marqueur maîtrisé
+    // sur le lieu choisi, aucun point bleu de géolocalisation parasite.
+    let radarMap = null, radarMarker = null, radarHost = "";
+    let radarFrames = [], radarLayers = [], radarAnimTimer = null, radarFrameIndex = 0;
+    let radarFramesLoadedAt = 0, radarLoading = false;
+
+    function updateRadarMap(lat, lon, cityName, zoom) {
+        if (!radarMap) {
+            radarMap = L.map("radar-map").setView([lat, lon], zoom);
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+                attribution: "© OpenStreetMap © CARTO · Radar © RainViewer",
+                subdomains: "abcd",
+                maxZoom: 19
+            }).addTo(radarMap);
+            radarMarker = L.circleMarker([lat, lon], {
+                radius: 8, color: "#fff", weight: 2.5,
+                fillColor: "#38bdf8", fillOpacity: 1
+            }).addTo(radarMap);
+        } else {
+            radarMap.setView([lat, lon], zoom);
+            radarMarker.setLatLng([lat, lon]);
+        }
+        if (cityName) radarMarker.bindTooltip(cityName, { direction: "top", offset: [0, -8] });
+        loadRadarFrames();
+    }
+
+    async function loadRadarFrames() {
+        // Les images RainViewer se renouvellent toutes les ~10 min :
+        // inutile de re-télécharger la liste à chaque déplacement de carte.
+        if (radarLoading) return;
+        if (radarLayers.length && Date.now() - radarFramesLoadedAt < 5 * 60 * 1000) {
+            if (!radarAnimTimer) startRadarAnimation();
+            return;
+        }
+        radarLoading = true;
+        stopRadarAnimation();
+        radarLayers.forEach(l => { if (radarMap.hasLayer(l)) radarMap.removeLayer(l); });
+        radarLayers = []; radarFrames = [];
+        try {
+            const r = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+            const d = await r.json();
+            radarHost = d.host;
+            radarFrames = [...((d.radar && d.radar.past) || []).slice(-7), ...((d.radar && d.radar.nowcast) || [])];
+            // Couches créées mais PAS ajoutées à la carte : seule l'image active
+            // est montée (sinon 7× les tuiles à chaque vue → 429 RainViewer).
+            radarLayers = radarFrames.map(f =>
+                L.tileLayer(`${radarHost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`, { opacity: 0, zIndex: 400 })
+            );
+            radarFramesLoadedAt = Date.now();
+            startRadarAnimation();
+        } catch (e) {
+            console.error("RainViewer indisponible :", e);
+            const el = document.getElementById("radar-timestamp");
+            el.textContent = "Radar momentanément indisponible";
+            el.classList.remove("hidden");
+        } finally {
+            radarLoading = false;
+        }
+    }
+
+    function showRadarFrame(nextIndex) {
+        const prev = radarLayers[radarFrameIndex];
+        radarFrameIndex = nextIndex;
+        const cur = radarLayers[nextIndex];
+        if (!cur) return;
+        if (!radarMap.hasLayer(cur)) cur.addTo(radarMap);
+        cur.setOpacity(0.7);
+        if (prev && prev !== cur) {
+            prev.setOpacity(0);
+            // Démonter l'image précédente après la transition pour limiter
+            // les requêtes de tuiles lors des déplacements de carte.
+            setTimeout(() => {
+                if (radarLayers[radarFrameIndex] !== prev && radarMap.hasLayer(prev)) radarMap.removeLayer(prev);
+            }, 1000);
+        }
+        updateRadarTimestamp();
+    }
+
+    function startRadarAnimation() {
+        if (!radarLayers.length) return;
+        showRadarFrame(0);
+        radarAnimTimer = setInterval(() => {
+            showRadarFrame((radarFrameIndex + 1) % radarLayers.length);
+        }, 800);
+    }
+
+    function stopRadarAnimation() {
+        if (radarAnimTimer) { clearInterval(radarAnimTimer); radarAnimTimer = null; }
+    }
+
+    function updateRadarTimestamp() {
+        const f = radarFrames[radarFrameIndex];
+        if (!f) return;
+        const el = document.getElementById("radar-timestamp");
+        const t = new Date(f.time * 1000);
+        const diffMin = Math.round((t.getTime() - Date.now()) / 60000);
+        const rel = diffMin >= 0 ? `prévision +${diffMin} min` : `il y a ${-diffMin} min`;
+        el.textContent = `Radar ${t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} — ${rel}`;
+        el.classList.remove("hidden");
+    }
+
+    function showRadarMap(show) {
+        document.getElementById("radar-map").classList.toggle("hidden", !show);
+        document.getElementById("radar-timestamp").classList.toggle("hidden", !show || !radarFrames.length);
+        document.getElementById("windy").classList.toggle("hidden", show);
+        if (show && radarMap) setTimeout(() => radarMap.invalidateSize(), 60);
+        if (!show) stopRadarAnimation();
+        else if (radarLayers.length && !radarAnimTimer) startRadarAnimation();
+    }
+
+    // Aiguillage : radar → carte autonome ; autres modes → iframe Windy
+    function refreshMap() {
+        if (currentMode === "radar") {
+            showRadarMap(true);
+            updateRadarMap(currentLat, currentLon, currentCity, currentZoom);
+            document.getElementById("map-location").textContent =
+                currentCity ? `${currentCity}${currentCountry ? " — " + currentCountry : ""} — radar animé en direct` : "";
+        } else {
+            showRadarMap(false);
+            updateWindy(currentLat, currentLon, currentCity, currentCountry, currentZoom);
+        }
+    }
+
     function setMapMode(mode) {
         currentMode = mode;
 
@@ -449,7 +590,7 @@
         const activeButton = document.getElementById("mode-" + mode);
         if (activeButton) activeButton.classList.add("active");
 
-        updateWindy(currentLat, currentLon, currentCity, currentCountry, currentZoom);
+        refreshMap();
     }
 
     function updateWindy(lat, lon, cityName = "", country = "", zoom = SELECTED_CITY_ZOOM) {
@@ -497,7 +638,7 @@
         currentCountry = country;
         currentZoom = zoom;
 
-        updateWindy(lat, lon, cityName, country, zoom);
+        refreshMap();
         await loadWeather(lat, lon, cityName, showCountry ? country : "");
 
         if (save) saveToHistory(cityName, country, lat, lon);
