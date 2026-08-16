@@ -33,3 +33,31 @@ Le backend échange cette valeur contre un access token temporaire via `https://
 4. Appeler `/api/health` : attendu `meteofrance: authenticated`.
 5. Appeler `/api/radar` et vérifier le format retourné par l'abonnement réel.
 6. Seulement après cette validation, connecter le frontend au radar Météo-France avec RainViewer en fallback.
+
+## Feux actifs — NASA FIRMS
+
+`GET /api/fires?lat=&lon=&radius=&days=`
+
+- Variable secrète Vercel : **`FIRMS_MAP_KEY`** (clé gratuite obtenue sur
+  `firms.modaps.eosdis.nasa.gov/api/map_key/`). Comme pour Météo-France, elle
+  ne doit jamais figurer dans le dépôt ni dans le frontend GitHub Pages.
+- Interroge les deux satellites VIIRS 375 m (`VIIRS_NOAA20_NRT` et
+  `VIIRS_SNPP_NRT`) et **fusionne les doublons** : les deux satellites
+  survolent la même zone, sans regroupement le nombre de foyers serait doublé.
+- Renvoie les foyers triés par distance, avec `distanceKm`, `detectedAt`,
+  `confidence` (l/n/h), `power` (FRP en MW).
+- `radius` borné à 10-300 km, `days` à 1-3. Cache CDN 10 min.
+- Codes d'erreur : `FIRMS_KEY_MISSING` (503), `INVALID_COORDINATES` (400),
+  `FIRMS_UNAVAILABLE` (502).
+
+### Branchement du frontend
+
+Dans `index.html`, renseigner `BACKEND_BASE` avec l'URL Vercel du projet
+(ex. `https://orageradar.vercel.app`). Tant que la constante est vide et que
+le site est servi par GitHub Pages, le bloc « feux actifs » reste simplement
+masqué : le reste du module incendie (indice calculé, zones boisées) continue
+de fonctionner sans backend.
+
+**Attention** : une détection thermique VIIRS n'est pas nécessairement un feu
+de forêt — un brûlage agricole ou une torchère industrielle déclenche le même
+signal. Le libellé affiché le précise à l'utilisateur.

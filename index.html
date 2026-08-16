@@ -240,6 +240,11 @@
             <span id="fire-forest" class="text-xs text-slate-500 text-right"></span>
         </div>
 
+        <div id="fire-active" class="hidden rounded-2xl px-4 py-3 text-sm mb-4 flex items-start gap-2"></div>
+
+        <div class="hidden">
+        </div>
+
         <div class="flex items-center gap-5 mb-4">
             <div id="fire-gauge" class="shrink-0 rounded-2xl px-4 py-3 text-center" style="min-width:104px">
                 <div id="fire-score" class="text-3xl font-black leading-none">--</div>
@@ -1243,6 +1248,47 @@
         } catch (e) { return null; }                     // dégradation silencieuse
     }
 
+    // Backend serverless (Vercel) : il détient la clé NASA FIRMS, jamais le
+    // navigateur. Laisser "" tant que le déploiement n'est pas fait : le bloc
+    // « feux actifs » reste alors simplement masqué.
+    const BACKEND_BASE = "";   // ex. "https://orageradar.vercel.app"
+
+    function backendUrl(path) {
+        if (BACKEND_BASE) return BACKEND_BASE + path;
+        // Servi depuis Vercel : les fonctions sont sur la même origine
+        return location.hostname.endsWith("github.io") ? null : path;
+    }
+
+    async function loadActiveFires(lat, lon, token) {
+        const el = document.getElementById("fire-active");
+        const url = backendUrl(`/api/fires?lat=${lat}&lon=${lon}&radius=100`);
+        if (!url) { el.classList.add("hidden"); return; }   // backend non configuré
+        try {
+            const r = await fetch(url);
+            if (!r.ok) { el.classList.add("hidden"); return; }
+            const d = await r.json();
+            if (token !== fireRequestToken || !d.ok) return;
+
+            if (!d.count) {
+                el.className = "rounded-2xl px-4 py-3 text-sm mb-4 flex items-start gap-2 alert-clear";
+                el.innerHTML = `<i class="fa-solid fa-circle-check mt-0.5"></i>
+                    <span>Aucun feu détecté par satellite dans un rayon de ${d.radiusKm} km sur les dernières 24 h.</span>`;
+            } else {
+                const nearest = d.fires[0];
+                const age = nearest.detectedAt
+                    ? Math.round((Date.now() - new Date(nearest.detectedAt)) / 3600000) : null;
+                el.className = "rounded-2xl px-4 py-3 text-sm mb-4 flex items-start gap-2 alert-storm";
+                el.innerHTML = `<i class="fa-solid fa-fire-flame-curved mt-0.5"></i>
+                    <span><strong>${d.count} foyer${d.count > 1 ? "s" : ""} détecté${d.count > 1 ? "s" : ""} par satellite</strong>
+                    dans un rayon de ${d.radiusKm} km — le plus proche à <strong>${nearest.distanceKm} km</strong>${age != null ? `, il y a ${age} h` : ""}.
+                    <span class="text-xs opacity-75">Détection thermique VIIRS : peut aussi correspondre à un brûlage agricole ou industriel.</span></span>`;
+            }
+            el.classList.remove("hidden");
+        } catch (e) {
+            el.classList.add("hidden");   // dégradation silencieuse
+        }
+    }
+
     let fireRequestToken = 0;
 
     async function loadFireRisk(lat, lon) {
@@ -1262,6 +1308,8 @@
             const risk = computeFireRisk(data.current, rain7d);
             renderFireRisk(risk);
             card.classList.remove("hidden");
+
+            loadActiveFires(lat, lon, token);   // en parallèle, sans bloquer
 
             const forests = await forestNearby(lat, lon);
             if (token !== fireRequestToken) return;
