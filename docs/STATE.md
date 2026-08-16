@@ -1,8 +1,24 @@
 # OrageRadar — état du projet
 
-_Dernière mise à jour : 16 août 2026 (soir, cycle 4)_
+_Dernière mise à jour : 16 août 2026 (soir, cycle 5)_
 
-## Dernier cycle — Windy rendu au choix de l'utilisateur
+## Dernier cycle — anticipation « la pluie arrive dans X min »
+
+**Objectif** : tenir la promesse du nom (« Anticipez les orages »). L'app disait le temps qu'il fait, pas quand il va changer.
+
+**Découverte importante sur le point bleu Windy** (l'utilisateur avait raison de douter de mon diagnostic) : le marqueur `mylocation` n'apparaît **que** avec `overlay=radar` (0 en `overlay=rain`, vérifié en direct), et **pas** à cause de `radarRange`. Cause réelle : le radar Windy est un produit *régional* (réseaux radar nationaux) — Windy géolocalise par IP pour choisir le réseau à charger. Les couches de prévision sont des grilles de modèle globales, donc aucune géolocalisation. Non supprimable (iframe cross-origin). Nuance utile : ce point marque « où Windy croit que vous êtes » — il paraît absurde seulement quand on consulte une ville lointaine.
+
+**Implémentation** : bloc « anticipation » sous l'alerte, alimenté par `minutely_15` (+ `forecast_minutely_15=12` = 3 h) et `wind_direction_700hPa` (vent directeur des cellules).
+- Titre : « Pluie dans 45 min », « Orage dans 1 h 15 », « Précipitations en cours — accalmie vers 20:15 », ou « Rien à l'horizon des 3 prochaines heures ».
+- Provenance : « arrive du sud-ouest » (article inclus dans la table des points cardinaux pour l'élision).
+- Frise de 12 barres (15 min chacune), hauteur et couleur selon l'intensité, violet pour l'orage, infobulle avec les mm.
+- Version AXION : le message orage ajoute « anticiper la sécurisation ».
+
+**Tests** : cas réels (Paris sec, Mexico pluvieux) + cas injectés (pluie dans 45 min, orage dans 1 h 15, pluie continue, accalmie, échelle de couleurs, 8 directions cardinales).
+
+**Piège rencontré** : mon premier jeu de test générait des horaires en UTC alors qu'Open-Meteo renvoie l'heure locale (`timezone=auto`) — le test échouait, pas le code. Toujours fabriquer les horaires de test en heure locale.
+
+## Cycle précédent — Windy rendu au choix de l'utilisateur
 
 **Retour utilisateur** : « j'avoue j'aimais bien Windy » — le passage du radar à notre carte Leaflet lui a été imposé sans alternative.
 

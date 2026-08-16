@@ -46,6 +46,12 @@
         /* Bandeau d'alerte orage / instabilité */
         .alert-storm { background: rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.40); color:#fcd34d; }
         .alert-clear { background: rgba(52,211,153,.10); border:1px solid rgba(52,211,153,.35); color:#6ee7b7; }
+        /* Frise d'anticipation : 3 h au quart d'heure */
+        #nowcast-bars { display: flex; align-items: flex-end; gap: 3px; height: 44px; }
+        #nowcast-bars .slot {
+            flex: 1; border-radius: 3px 3px 2px 2px; min-height: 3px;
+            background: #1e293b; transition: height .3s ease;
+        }
         /* Carte radar autonome (Leaflet + RainViewer) — pas de point bleu parasite */
         #radar-map { height: 650px; width: 100%; background: #0b1120; }
         #radar-map .leaflet-container { background: #0b1120; }
@@ -142,6 +148,17 @@
             <div id="description" class="text-xl mb-5">Chargement...</div>
 
             <div id="storm-alert" class="hidden rounded-2xl px-4 py-3 text-sm mb-5 flex items-center gap-2"></div>
+
+            <div id="nowcast" class="hidden bg-slate-800/60 border border-slate-700 rounded-2xl px-4 py-3 mb-5">
+                <div class="flex items-baseline justify-between gap-3 mb-2">
+                    <div id="nowcast-headline" class="font-semibold"></div>
+                    <div id="nowcast-origin" class="text-xs text-slate-400 shrink-0"></div>
+                </div>
+                <div id="nowcast-bars"></div>
+                <div class="flex justify-between text-xs text-slate-500 mt-1">
+                    <span>maintenant</span><span>+1 h</span><span>+2 h</span><span>+3 h</span>
+                </div>
+            </div>
 
             <div class="grid grid-cols-3 gap-3 text-sm mb-4">
                 <div class="bg-slate-800 rounded-2xl p-3">
@@ -830,8 +847,9 @@
         const url =
             `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
             "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m" +
-            "&minutely_15=precipitation,weather_code" +
-            "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,cape" +
+            "&minutely_15=precipitation,weather_code,precipitation_probability" +
+            "&forecast_minutely_15=12" +          // 12 × 15 min = 3 h d'anticipation
+            "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,cape,wind_direction_700hPa" +
             "&timezone=auto";
 
         try {
@@ -857,11 +875,108 @@
                 new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
             renderStormAlert(current, data);
+            renderNowcast(current, data);
             renderHourlyForecast(data);
 
         } catch (error) {
             alert("Impossible de charger la météo pour cette ville.");
         }
+    }
+
+    // ── Anticipation : « la pluie arrive dans X min » ───────────────────────
+    // Exploite les prévisions au quart d'heure (3 h) déjà fournies par
+    // Open-Meteo, et le vent à 700 hPa qui pilote le déplacement des cellules.
+
+    // Article inclus pour l'élision correcte (« de l'est », pas « du est »)
+    const CARDINALS = ["du nord","du nord-est","de l'est","du sud-est",
+                       "du sud","du sud-ouest","de l'ouest","du nord-ouest"];
+
+    function cardinalFrom(degrees) {
+        if (degrees == null || isNaN(degrees)) return null;
+        return CARDINALS[Math.round(((degrees % 360) / 45)) % 8];
+    }
+
+    // Couleur d'un pas de 15 min selon l'intensité (mm) et le type de temps
+    function slotStyle(mm, code) {
+        if (stormLevel(code) >= 2) return { color: "#c084fc", ratio: Math.max(.55, Math.min(1, mm / 4)) };
+        if (mm >= 4)   return { color: "#ef4444", ratio: 1 };
+        if (mm >= 2)   return { color: "#f97316", ratio: .85 };
+        if (mm >= 0.8) return { color: "#eab308", ratio: .65 };
+        if (mm >= 0.2) return { color: "#38bdf8", ratio: .45 };
+        if (mm > 0)    return { color: "#0ea5e9", ratio: .28 };
+        return { color: "#1e293b", ratio: .08 };
+    }
+
+    function formatDelay(minutes) {
+        if (minutes < 60) return `${minutes} min`;
+        const h = Math.floor(minutes / 60), m = minutes % 60;
+        return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+    }
+
+    function renderNowcast(current, data) {
+        const box = document.getElementById("nowcast");
+        const M = data.minutely_15;
+        if (!M || !M.time) { box.classList.add("hidden"); return; }
+
+        const now = new Date();
+        let start = M.time.findIndex(t => new Date(t) >= now);
+        if (start === -1) start = 0;
+
+        const slots = [];
+        for (let i = start; i < start + 12 && i < M.time.length; i++) {
+            slots.push({
+                time: new Date(M.time[i]),
+                mm: M.precipitation[i] || 0,
+                code: M.weather_code[i]
+            });
+        }
+        if (!slots.length) { box.classList.add("hidden"); return; }
+
+        // Frise d'intensité
+        const bars = document.getElementById("nowcast-bars");
+        bars.innerHTML = "";
+        slots.forEach(s => {
+            const st = slotStyle(s.mm, s.code);
+            const div = document.createElement("div");
+            div.className = "slot";
+            div.style.height = Math.round(st.ratio * 44) + "px";
+            div.style.background = st.color;
+            div.title = `${s.time.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} — ${s.mm.toFixed(1)} mm`;
+            bars.appendChild(div);
+        });
+
+        // Titre : première échéance humide
+        const rainingNow = (current.precipitation || 0) > 0 || slots[0].mm >= 0.1;
+        const firstWet = slots.find(s => s.mm >= 0.1 || stormLevel(s.code) >= 2);
+        const headline = document.getElementById("nowcast-headline");
+
+        if (rainingNow) {
+            const stop = slots.find(s => s.mm < 0.1 && stormLevel(s.code) < 2);
+            headline.innerHTML = stop
+                ? `<i class="fa-solid fa-cloud-rain text-sky-400 mr-1"></i> Précipitations en cours — accalmie vers ${stop.time.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                : `<i class="fa-solid fa-cloud-showers-heavy text-sky-400 mr-1"></i> Précipitations en cours pour les 3 prochaines heures`;
+        } else if (firstWet) {
+            const delay = Math.max(5, Math.round((firstWet.time - now) / 60000));
+            const isStorm = stormLevel(firstWet.code) >= 2;
+            headline.innerHTML = isStorm
+                ? `<i class="fa-solid fa-bolt text-amber-300 mr-1"></i> Orage dans ${formatDelay(delay)}`
+                : `<i class="fa-solid fa-cloud-rain text-sky-400 mr-1"></i> Pluie dans ${formatDelay(delay)}`;
+        } else {
+            headline.innerHTML = `<i class="fa-solid fa-sun text-emerald-300 mr-1"></i> Rien à l'horizon des 3 prochaines heures`;
+        }
+
+        // D'où viennent les cellules (vent directeur à 700 hPa)
+        const originEl = document.getElementById("nowcast-origin");
+        const dirs = data.hourly && data.hourly.wind_direction_700hPa;
+        let origin = null;
+        if (dirs) {
+            let h = data.hourly.time.findIndex(t => new Date(t) >= now);
+            if (h === -1) h = 0;
+            origin = cardinalFrom(dirs[h]);
+        }
+        originEl.textContent = origin && (rainingNow || firstWet) ? `arrive ${origin}` : "";
+
+        box.classList.remove("hidden");
     }
 
     function stormLevel(code) {
