@@ -210,6 +210,18 @@
         </div>
     </div>
 
+    <div id="daily-card" class="hidden bg-slate-900 border border-slate-700 rounded-3xl p-6 mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
+            <h3 class="font-semibold flex items-center gap-x-2">
+                <i class="fa-solid fa-calendar-days text-sky-400"></i>
+                Prévisions 7 jours
+            </h3>
+            <span class="text-xs text-slate-500">Températures · pluie · risque orageux</span>
+        </div>
+        <div id="daily-chart" class="relative h-32 mb-5"></div>
+        <div id="daily-forecast" class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3"></div>
+    </div>
+
     <div id="models-card" class="hidden bg-slate-900 border border-slate-700 rounded-3xl p-6 mb-8">
         <div class="flex items-center justify-between gap-4 mb-1">
             <h3 class="font-semibold flex items-center gap-x-2">
@@ -1080,6 +1092,8 @@
             "&minutely_15=precipitation,weather_code,precipitation_probability" +
             "&forecast_minutely_15=12" +          // 12 × 15 min = 3 h d'anticipation
             "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,cape,wind_direction_700hPa" +
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max" +
+            "&forecast_days=7" +
             "&timezone=auto";
 
         try {
@@ -1107,6 +1121,7 @@
             renderStormAlert(current, data);
             renderNowcast(current, data);
             renderHourlyForecast(data);
+            renderDailyForecast(data);
 
         } catch (error) {
             alert("Impossible de charger la météo pour cette ville.");
@@ -1414,6 +1429,61 @@
 
             container.appendChild(div);
         }
+    }
+
+    function renderDailyForecast(data) {
+        const card = document.getElementById("daily-card");
+        const container = document.getElementById("daily-forecast");
+        const chart = document.getElementById("daily-chart");
+        const D = data.daily;
+        if (!D || !D.time || !D.time.length) { card.classList.add("hidden"); return; }
+
+        const count = Math.min(7, D.time.length);
+        const days = Array.from({ length: count }, (_, i) => ({
+            date: new Date(D.time[i] + "T12:00:00"),
+            code: D.weather_code[i],
+            max: D.temperature_2m_max[i],
+            min: D.temperature_2m_min[i],
+            rain: D.precipitation_sum ? (D.precipitation_sum[i] || 0) : 0,
+            prob: D.precipitation_probability_max ? (D.precipitation_probability_max[i] || 0) : 0
+        }));
+
+        container.innerHTML = "";
+        days.forEach((d, i) => {
+            const info = getWeatherInfo(d.code);
+            const storm = stormLevel(d.code) >= 2;
+            const wet = d.prob >= 50 || d.rain >= 1;
+            const div = document.createElement("div");
+            div.className = "bg-slate-800/70 border border-slate-700 rounded-2xl p-3 text-center";
+            const dayLabel = i === 0 ? "Aujourd'hui" : d.date.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "");
+            const risk = storm
+                ? '<span class="text-violet-300"><i class="fa-solid fa-bolt"></i> Orage</span>'
+                : wet ? `<span class="text-sky-300"><i class="fa-solid fa-droplet"></i> ${Math.round(d.prob)}%</span>`
+                : '<span class="text-emerald-300">Sec</span>';
+            div.innerHTML = `
+                <div class="text-xs text-slate-400 capitalize">${dayLabel}</div>
+                <div class="text-3xl my-2">${info.emoji}</div>
+                <div class="font-semibold">${Math.round(d.max)}° <span class="text-slate-500 font-normal">/ ${Math.round(d.min)}°</span></div>
+                <div class="text-xs mt-2">${risk}</div>
+                <div class="text-[11px] text-slate-500 mt-1">${d.rain.toFixed(1)} mm</div>`;
+            container.appendChild(div);
+        });
+
+        const values = days.flatMap(d => [d.max, d.min]).filter(Number.isFinite);
+        const lo = Math.min(...values) - 2, hi = Math.max(...values) + 2, span = Math.max(1, hi - lo);
+        const width = 700, height = 120, padX = 22, padY = 18;
+        const x = i => count === 1 ? width / 2 : padX + i * ((width - padX * 2) / (count - 1));
+        const y = v => padY + (hi - v) / span * (height - padY * 2);
+        const points = key => days.map((d, i) => `${x(i)},${y(d[key])}`).join(" ");
+        chart.innerHTML = `
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="w-full h-full" role="img" aria-label="Évolution des températures sur 7 jours">
+                <polyline points="${points("max")}" fill="none" stroke="#fb923c" stroke-width="3" vector-effect="non-scaling-stroke"/>
+                <polyline points="${points("min")}" fill="none" stroke="#38bdf8" stroke-width="3" vector-effect="non-scaling-stroke"/>
+                ${days.map((d, i) => `<circle cx="${x(i)}" cy="${y(d.max)}" r="4" fill="#fb923c"/><circle cx="${x(i)}" cy="${y(d.min)}" r="4" fill="#38bdf8"/>`).join("")}
+            </svg>
+            <div class="absolute top-0 left-0 text-[11px] text-orange-300">Max</div>
+            <div class="absolute bottom-0 left-0 text-[11px] text-sky-300">Min</div>`;
+        card.classList.remove("hidden");
     }
 
     async function showSuggestions() {
