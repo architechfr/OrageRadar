@@ -49,13 +49,35 @@
         /* Carte radar autonome (Leaflet + RainViewer) — pas de point bleu parasite */
         #radar-map { height: 650px; width: 100%; background: #0b1120; }
         #radar-map .leaflet-container { background: #0b1120; }
+        /* Fond de carte éclairci : dark_nolabels est très sombre d'origine */
+        .basemap-tiles { filter: brightness(1.9) saturate(1.15) contrast(.95); }
+        /* Fondu enchaîné entre images radar (évite le clignotement sec) */
+        .radar-tiles { transition: opacity .32s linear; }
         #radar-timestamp {
             position: absolute; bottom: 14px; left: 14px; z-index: 600;
             background: rgba(15,23,42,.88); border: 1px solid #334155;
             border-radius: 12px; padding: 6px 12px; font-size: 12px;
+            display: flex; align-items: center; gap: 10px;
         }
+        #radar-play {
+            border: 1px solid #475569; background: #1e293b; color: #e2e8f0;
+            width: 26px; height: 26px; border-radius: 999px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 11px;
+        }
+        #radar-play:hover { background: #334155; }
+        #radar-legend {
+            position: absolute; bottom: 14px; right: 14px; z-index: 600;
+            background: rgba(15,23,42,.88); border: 1px solid #334155;
+            border-radius: 12px; padding: 6px 10px; font-size: 10px; color: #cbd5e1;
+        }
+        #radar-legend .bar {
+            height: 6px; width: 116px; border-radius: 999px; margin: 4px 0 2px;
+            background: linear-gradient(90deg,#0088bf,#00c46a,#e8e800,#f08000,#d00000,#c000c0);
+        }
+        #radar-legend .labels { display: flex; justify-content: space-between; }
         @media (max-width: 640px) {
             #radar-map, #windy { height: 480px; }
+            #radar-legend { display: none; }
         }
     </style>
 </head>
@@ -218,7 +240,17 @@
 
         <div class="rounded-2xl overflow-hidden border border-slate-700 relative">
             <div id="radar-map"></div>
-            <div id="radar-timestamp" class="hidden"></div>
+            <div id="radar-timestamp" class="hidden">
+                <button id="radar-play" onclick="toggleRadarPlay()" title="Lecture / pause">
+                    <i class="fa-solid fa-pause"></i>
+                </button>
+                <span id="radar-time-label"></span>
+            </div>
+            <div id="radar-legend" class="hidden">
+                Intensité des précipitations
+                <div class="bar"></div>
+                <div class="labels"><span>faible</span><span>forte</span></div>
+            </div>
             <iframe id="windy"
                     class="hidden"
                     width="100%"
@@ -466,11 +498,22 @@
     function updateRadarMap(lat, lon, cityName, zoom) {
         if (!radarMap) {
             radarMap = L.map("radar-map").setView([lat, lon], zoom);
-            L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+
+            // Fond sans libellés (éclairci par CSS), radar par-dessus, puis les
+            // noms de villes dans un pane supérieur : ils restent lisibles même
+            // sous une cellule orageuse.
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
                 attribution: "© OpenStreetMap © CARTO · Radar © RainViewer",
-                subdomains: "abcd",
-                maxZoom: 19
+                subdomains: "abcd", maxZoom: 19, className: "basemap-tiles"
             }).addTo(radarMap);
+
+            radarMap.createPane("labels");
+            radarMap.getPane("labels").style.zIndex = 650;
+            radarMap.getPane("labels").style.pointerEvents = "none";
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+                subdomains: "abcd", maxZoom: 19, pane: "labels"
+            }).addTo(radarMap);
+
             radarMarker = L.circleMarker([lat, lon], {
                 radius: 8, color: "#fff", weight: 2.5,
                 fillColor: "#38bdf8", fillOpacity: 1
@@ -500,22 +543,32 @@
             const d = await r.json();
             radarHost = d.host;
             radarFrames = [...((d.radar && d.radar.past) || []).slice(-7), ...((d.radar && d.radar.nowcast) || [])];
-            // Couches créées mais PAS ajoutées à la carte : seule l'image active
-            // est montée (sinon 7× les tuiles à chaque vue → 429 RainViewer).
             // maxNativeZoom 7 : RainViewer ne sert pas de tuiles au-delà
             // (filigrane « Zoom Level Not Supported ») — Leaflet agrandit
-            // lui-même les tuiles z7 aux zooms ville.
+            // lui-même les tuiles z7 aux zooms ville. Ce plafond rend le nombre
+            // de tuiles assez faible pour monter TOUTES les images d'un coup :
+            // elles sont préchargées, donc l'animation ne clignote plus.
             radarLayers = radarFrames.map(f =>
                 L.tileLayer(`${radarHost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
-                    { opacity: 0, zIndex: 400, maxNativeZoom: 7, maxZoom: 19 })
+                    { opacity: 0, zIndex: 400, maxNativeZoom: 7, maxZoom: 19, className: "radar-tiles" })
             );
             radarFramesLoadedAt = Date.now();
-            startRadarAnimation();
+
+            // Attendre le préchargement avant d'animer (sinon la 1re boucle
+            // affiche des images encore vides = clignotement).
+            let pending = radarLayers.length, started = false;
+            const begin = () => { if (!started) { started = true; startRadarAnimation(true); } };
+            const guard = setTimeout(begin, 6000);
+            radarLayers.forEach(l => l.once("load", () => {
+                if (--pending <= 0) { clearTimeout(guard); begin(); }
+            }));
+            radarLayers.forEach(l => l.addTo(radarMap));
+            showRadarFrame(0);   // première image visible immédiatement
+            document.getElementById("radar-legend").classList.remove("hidden");
         } catch (e) {
             console.error("RainViewer indisponible :", e);
-            const el = document.getElementById("radar-timestamp");
-            el.textContent = "Radar momentanément indisponible";
-            el.classList.remove("hidden");
+            document.getElementById("radar-time-label").textContent = "Radar momentanément indisponible";
+            document.getElementById("radar-timestamp").classList.remove("hidden");
         } finally {
             radarLoading = false;
         }
@@ -526,45 +579,54 @@
         radarFrameIndex = nextIndex;
         const cur = radarLayers[nextIndex];
         if (!cur) return;
-        if (!radarMap.hasLayer(cur)) cur.addTo(radarMap);
-        cur.setOpacity(0.7);
-        if (prev && prev !== cur) {
-            prev.setOpacity(0);
-            // Démonter l'image précédente après la transition pour limiter
-            // les requêtes de tuiles lors des déplacements de carte.
-            setTimeout(() => {
-                if (radarLayers[radarFrameIndex] !== prev && radarMap.hasLayer(prev)) radarMap.removeLayer(prev);
-            }, 1000);
-        }
+        // Toutes les couches restent montées : simple fondu d'opacité, aucun
+        // rechargement réseau entre deux images.
+        if (prev && prev !== cur) prev.setOpacity(0);
+        cur.setOpacity(0.8);
         updateRadarTimestamp();
     }
 
-    function startRadarAnimation() {
+    function startRadarAnimation(reset = false) {
         if (!radarLayers.length) return;
-        showRadarFrame(0);
+        stopRadarAnimation();
+        if (reset) showRadarFrame(0);
         radarAnimTimer = setInterval(() => {
             showRadarFrame((radarFrameIndex + 1) % radarLayers.length);
-        }, 800);
+        }, 900);
+        updateRadarPlayButton();
     }
 
     function stopRadarAnimation() {
         if (radarAnimTimer) { clearInterval(radarAnimTimer); radarAnimTimer = null; }
+        updateRadarPlayButton();
+    }
+
+    function toggleRadarPlay() {
+        if (radarAnimTimer) stopRadarAnimation(); else startRadarAnimation();
+    }
+
+    function updateRadarPlayButton() {
+        const b = document.getElementById("radar-play");
+        if (b) b.innerHTML = radarAnimTimer
+            ? '<i class="fa-solid fa-pause"></i>'
+            : '<i class="fa-solid fa-play"></i>';
     }
 
     function updateRadarTimestamp() {
         const f = radarFrames[radarFrameIndex];
         if (!f) return;
-        const el = document.getElementById("radar-timestamp");
         const t = new Date(f.time * 1000);
         const diffMin = Math.round((t.getTime() - Date.now()) / 60000);
         const rel = diffMin >= 0 ? `prévision +${diffMin} min` : `il y a ${-diffMin} min`;
-        el.textContent = `Radar ${t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} — ${rel}`;
-        el.classList.remove("hidden");
+        document.getElementById("radar-time-label").textContent =
+            `${t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} — ${rel}`;
+        document.getElementById("radar-timestamp").classList.remove("hidden");
     }
 
     function showRadarMap(show) {
         document.getElementById("radar-map").classList.toggle("hidden", !show);
         document.getElementById("radar-timestamp").classList.toggle("hidden", !show || !radarFrames.length);
+        document.getElementById("radar-legend").classList.toggle("hidden", !show || !radarFrames.length);
         document.getElementById("windy").classList.toggle("hidden", show);
         if (show && radarMap) setTimeout(() => radarMap.invalidateSize(), 60);
         if (!show) stopRadarAnimation();

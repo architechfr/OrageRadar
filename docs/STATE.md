@@ -1,8 +1,28 @@
 # OrageRadar — état du projet
 
-_Dernière mise à jour : 16 août 2026 (soir)_
+_Dernière mise à jour : 16 août 2026 (soir, cycle 3)_
 
-## Dernier cycle (correctif régression)
+## Dernier cycle — qualité d'affichage de la carte radar
+
+**Retour utilisateur** : « carte très sombre, ça clignote tout le temps, on a perdu en beauté et lisibilité ».
+
+**Diagnostic** :
+- *Clignotement* : `showRadarFrame` montait/démontait les couches à chaque image → chaque image se re-téléchargeait à chaque tour de boucle. Ce montage à la demande était le contournement du 429 — devenu inutile depuis `maxNativeZoom: 7` (une image ne pèse plus que ~4 tuiles).
+- *Trop sombre* : fond CARTO `dark_all` très sombre, et ses libellés passaient **sous** la couche radar → noms de villes noyés.
+
+**Correctifs** (les 2 apps) :
+- **Préchargement complet** : les 7 couches sont montées d'emblée en opacité 0 ; l'animation ne démarre qu'une fois toutes les tuiles chargées (garde-fou 6 s). Mesuré : **0 requête réseau pendant l'animation**.
+- **Fondu enchaîné** CSS `transition: opacity .32s` au lieu d'un basculement sec.
+- **Fond éclairci** : `dark_nolabels` + `filter: brightness(1.9) saturate(1.15)`.
+- **Libellés au-dessus du radar** : pane Leaflet dédié `labels` (zIndex 650) avec `dark_only_labels` → noms de communes lisibles même sous une cellule.
+- **Opacité radar** 0.7 → 0.8, cadence 800 → 900 ms.
+- **Bouton lecture/pause** + **légende d'intensité** (dégradé bleu→violet).
+
+**Tests** : préchargement 7/7 couches, 0 requête pendant l'animation, filtre et pane vérifiés, pause fige bien l'image et reprend, marqueur sur Campagnan, module AXION idem via URL chantier. `node --check` OK sur les deux fichiers.
+
+**Règle générale** : une animation de tuiles ne doit jamais démonter ses couches — précharger, puis ne jouer que sur l'opacité. Le rate-limit se règle en bornant `maxNativeZoom`, pas en démontant.
+
+## Cycle précédent (correctif régression)
 
 **Bug** : depuis la carte radar autonome, plus aucune carte visible au zoom ville — tuiles RainViewer remplacées par le filigrane « Zoom Level Not Supported » (voile sombre), signalé par capture d'écran utilisateur sur mobile (Campagnan, zoom 12).
 
