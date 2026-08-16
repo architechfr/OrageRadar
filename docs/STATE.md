@@ -1,8 +1,25 @@
 # OrageRadar — état du projet
 
-_Dernière mise à jour : 16 août 2026 (soir, cycle 3)_
+_Dernière mise à jour : 16 août 2026 (soir, cycle 4)_
 
-## Dernier cycle — qualité d'affichage de la carte radar
+## Dernier cycle — Windy rendu au choix de l'utilisateur
+
+**Retour utilisateur** : « j'avoue j'aimais bien Windy » — le passage du radar à notre carte Leaflet lui a été imposé sans alternative.
+
+**Décision** : ne pas choisir à sa place. Les deux rendus coexistent :
+- **« Radar animé »** = carte Leaflet/RainViewer, repère fiable sur le lieu choisi (par défaut).
+- **« Radar Windy »** = rendu Windy d'origine, plus riche, mais avec son point bleu de géoloc IP.
+Chaque bouton porte une infobulle expliquant le compromis.
+
+**Implémentation minimale** : `refreshMap()` n'envoie sur la carte Leaflet que le mode `radar` ; tout autre mode passe déjà par l'iframe. Une entrée `windyradar` dans `getModeConfig` + un bouton ont donc suffi.
+
+**Préférence mémorisée** : `localStorage.mapMode` est relu au démarrage (`highlightMapMode` extrait de `setMapMode`), avec validation par l'existence du bouton correspondant — sinon retour à `radar`.
+
+**Tests** : bascule aller-retour dans les 2 apps, persistance vérifiée après rechargement complet (mode `windyradar` restauré, bon bouton actif, iframe centrée sur `detailLat`), animation Leaflet stoppée en mode Windy et relancée au retour, légende masquée hors mode radar.
+
+**Règle générale** : quand une amélioration technique retire une expérience que l'utilisateur appréciait, proposer les deux et mémoriser son choix plutôt que d'arbitrer à sa place.
+
+## Cycle précédent — qualité d'affichage de la carte radar
 
 **Retour utilisateur** : « carte très sombre, ça clignote tout le temps, on a perdu en beauté et lisibilité ».
 

@@ -4,7 +4,8 @@
 
 ## Fonctions
 
-- **Carte radar animée autonome** (Leaflet + RainViewer) : historique ~1h + nowcast, marqueur fiable sur le lieu choisi, aucune géolocalisation parasite.
+- **Carte radar animée autonome** (Leaflet + RainViewer) : historique ~1h + nowcast, marqueur fiable sur le lieu choisi, aucune géolocalisation parasite, lecture/pause et légende d'intensité.
+- **Radar Windy** en alternative : rendu d'origine plus riche, au prix du point bleu de géoloc IP de Windy. Le choix entre les deux rendus est mémorisé.
 - **Couches de prévision Windy** (iframe) : pluie +1h, orages +1h, nuages, vent.
 - **Météo actuelle + prévisions horaires** (Open-Meteo).
 - **Alerte orage multi-signaux** : nowcast 15 min, codes orage 12h, probabilité de pluie, rafales, CAPE (instabilité).

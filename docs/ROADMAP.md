@@ -13,6 +13,7 @@
 - [x] Animation sans clignotement (préchargement + fondu enchaîné)
 - [x] Fond éclairci + noms de communes au-dessus du radar
 - [x] Bouton lecture/pause + légende d'intensité
+- [x] Choix du rendu radar : carte précise **ou** Windy, préférence mémorisée
 
 ## Prochaines priorités
 

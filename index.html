@@ -207,9 +207,17 @@
 
             <div class="flex flex-wrap gap-2">
                 <button id="mode-radar" onclick="setMapMode('radar')"
+                        title="Carte précise : le repère reste sur le lieu que vous avez choisi"
                         class="map-mode active px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
                     <i class="fa-solid fa-cloud-bolt mr-1"></i>
                     Radar animé
+                </button>
+
+                <button id="mode-windyradar" onclick="setMapMode('windyradar')"
+                        title="Rendu Windy (plus riche), mais Windy affiche son propre point bleu de géolocalisation, souvent inexact"
+                        class="map-mode px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
+                    <i class="fa-solid fa-earth-europe mr-1"></i>
+                    Radar Windy
                 </button>
 
                 <button id="mode-rain" onclick="setMapMode('rain')"
@@ -479,6 +487,9 @@
     function getModeConfig(mode) {
         const configs = {
             radar: { overlay: "radar", calendar: "now", product: "", radarRange: "-1", label: "radar animé en direct" },
+            // Même couche radar, mais rendue par Windy : tout mode ≠ "radar"
+            // passe par l'iframe, donc cette entrée suffit à réactiver Windy.
+            windyradar: { overlay: "radar", calendar: "now", product: "", radarRange: "-1", label: "radar Windy en direct" },
             rain: { overlay: "rain", calendar: "1", product: "ecmwf", radarRange: "", label: "pluie prévue +1h" },
             thunder: { overlay: "thunder", calendar: "1", product: "ecmwf", radarRange: "", label: "orages prévus +1h" },
             clouds: { overlay: "clouds", calendar: "now", product: "ecmwf", radarRange: "", label: "nuages" },
@@ -648,15 +659,17 @@
 
     function setMapMode(mode) {
         currentMode = mode;
+        localStorage.setItem("mapMode", mode);   // on retient la préférence
+        highlightMapMode(mode);
+        refreshMap();
+    }
 
+    function highlightMapMode(mode) {
         document.querySelectorAll(".map-mode").forEach(button => {
             button.classList.remove("active");
         });
-
         const activeButton = document.getElementById("mode-" + mode);
         if (activeButton) activeButton.classList.add("active");
-
-        refreshMap();
     }
 
     function updateWindy(lat, lon, cityName = "", country = "", zoom = SELECTED_CITY_ZOOM) {
@@ -1105,7 +1118,10 @@
     }
 
     async function init() {
-        currentMode = "radar";
+        // Reprend le dernier mode choisi (ex. « Radar Windy » si vous le préférez)
+        const savedMode = localStorage.getItem("mapMode");
+        currentMode = (savedMode && document.getElementById("mode-" + savedMode)) ? savedMode : "radar";
+        highlightMapMode(currentMode);
 
         renderFavorites();
 
