@@ -322,6 +322,38 @@
     let currentZoom = DEFAULT_ZOOM;
     let currentMode = "radar";
 
+    const LAST_LOCATION_KEY = "lastLocation";
+
+    function saveLastLocation(lat, lon, cityName, country, zoom) {
+        if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon)) || !cityName) return;
+        localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({
+            lat: Number(lat),
+            lon: Number(lon),
+            name: cityName,
+            country: country || "",
+            zoom: Number.isFinite(Number(zoom)) ? Number(zoom) : SELECTED_CITY_ZOOM
+        }));
+    }
+
+    function getLastLocation() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(LAST_LOCATION_KEY) || "null");
+            if (!saved || !saved.name || !Number.isFinite(Number(saved.lat)) || !Number.isFinite(Number(saved.lon))) {
+                return null;
+            }
+            return {
+                lat: Number(saved.lat),
+                lon: Number(saved.lon),
+                name: saved.name,
+                country: saved.country || "",
+                zoom: Number.isFinite(Number(saved.zoom)) ? Number(saved.zoom) : SELECTED_CITY_ZOOM
+            };
+        } catch (e) {
+            localStorage.removeItem(LAST_LOCATION_KEY);
+            return null;
+        }
+    }
+
     const searchInput = document.getElementById("search-input");
     const suggestionsBox = document.getElementById("suggestions-box");
 
@@ -748,6 +780,7 @@
         currentCity = cityName;
         currentCountry = country;
         currentZoom = zoom;
+        saveLastLocation(lat, lon, cityName, country, zoom);
 
         refreshMap();
         await loadWeather(lat, lon, cityName, showCountry ? country : "");
@@ -1455,9 +1488,12 @@
 
         renderFavorites();
 
-        await setLocation(DEFAULT_LOCATION.lat, DEFAULT_LOCATION.lon, DEFAULT_LOCATION.name, DEFAULT_LOCATION.country, {
+        const savedLocation = getLastLocation();
+        const startLocation = savedLocation || { ...DEFAULT_LOCATION, zoom: DEFAULT_ZOOM };
+
+        await setLocation(startLocation.lat, startLocation.lon, startLocation.name, startLocation.country || "", {
             save: false,
-            zoom: DEFAULT_ZOOM,
+            zoom: startLocation.zoom,
             showCountry: true
         });
     }
