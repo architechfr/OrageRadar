@@ -1,5 +1,31 @@
 # OrageRadar — état du projet
 
+## Dernier cycle — module risque de feu de forêt
+
+**Besoin** : chantiers proches de massifs boisés, partout en France, avec un état live.
+
+**Sources testées avant de choisir** :
+| Source | Résultat du test | Décision |
+|---|---|---|
+| Open-Meteo (calcul du danger) | toutes variables OK, discrimine bien (Provence VPD 1,41 / HR 56 % contre Landes 0,25 / 90 %) | **retenu** — sans clé, précis au point |
+| EFFIS / Copernicus WMS | `GetMap` HTTP 200 | utilisable en couche carte |
+| EFFIS interrogation au point | « Search returned no results » | écarté |
+| NASA FIRMS (feux actifs) | HTTP 400 « Invalid MAP_KEY » | **en attente d'une clé gratuite (action utilisateur)** |
+| Météo des forêts (data.gouv) | archives annuelles seulement (`mdf.2026.csv.gz`) | le live passe par la clé Météo-France |
+
+**Indice** : 0-100 pondérant humidité de l'air (25 %), pouvoir asséchant VPD (20 %), pluie sur 7 jours (22 %), vent (13 %), température (10 %), humidité du sol (10 %, poids reporté sur l'air si la donnée manque). Quatre niveaux avec consigne chantier (travaux par points chauds, extincteurs, arrêtés préfectoraux).
+
+**Honnêteté affichée** : l'indice est présenté comme indicatif ; la Météo des forêts de Météo-France et les arrêtés préfectoraux restent les références officielles.
+
+**Proximité boisée** (OpenStreetMap / Overpass) : `out count` au lieu d'une liste tronquée — le plafond faisait afficher le même total partout (30/30). Le libellé annonce une **présence**, pas une surface : le nombre de polygones OSM ne mesure pas l'étendue d'un massif (Paris centre 38 petits squares contre Draguignan 2 grands massifs). Cache définitif par lieu car Overpass renvoie 429 dès le 3ᵉ appel.
+
+**Bug corrigé dans les moteurs Intelligence (v2 et v3)** : UKMO était appelé sur `/v1/ukmo`, inexistant (404). `Promise.allSettled` masquait l'échec : la page annonçait 8 sources et n'en utilisait que 7. Le bon appel est `models=ukmo_seamless`. Vérifié : « 8 sources actives sur 8 ».
+
+**Liens croisés** : l'accueil renvoie désormais vers Intelligence (le retour existait déjà).
+
+**Reste à faire** : unifier le moteur des deux pages (l'accueil compare 4 modèles avec un verdict binaire, Intelligence calcule un score de confiance sur 8 sources — deux réponses différentes à la même question).
+
+## Cycle précédent — 
 _Dernière mise à jour : 16 août 2026 (soir, cycle 7)_
 
 ## Dernier cycle — tableau de bord des favoris
