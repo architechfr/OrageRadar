@@ -323,6 +323,7 @@
                 <label for="setting-startup" class="block text-sm font-medium mb-2">Lieu au démarrage</label>
                 <select id="setting-startup" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm">
                     <option value="last">Dernier lieu consulté</option>
+                    <option value="favorite">Mon premier favori</option>
                     <option value="position">Ma position</option>
                     <option value="paris">Paris</option>
                 </select>
@@ -1655,9 +1656,18 @@
         renderFavorites();
 
         const savedLocation = getLastLocation();
-        const startLocation = appSettings.startup === "paris"
-            ? { ...DEFAULT_LOCATION, zoom: DEFAULT_ZOOM }
-            : (savedLocation || { ...DEFAULT_LOCATION, zoom: DEFAULT_ZOOM });
+        const firstFavorite = getFavorites()[0];
+        const parisLocation = { ...DEFAULT_LOCATION, zoom: DEFAULT_ZOOM };
+
+        let startLocation;
+        if (appSettings.startup === "paris") {
+            startLocation = parisLocation;
+        } else if (appSettings.startup === "favorite" && firstFavorite) {
+            // Repli sur le dernier lieu, puis Paris, si aucun favori n'est enregistré
+            startLocation = { ...firstFavorite, zoom: SELECTED_CITY_ZOOM };
+        } else {
+            startLocation = savedLocation || parisLocation;
+        }
 
         await setLocation(startLocation.lat, startLocation.lon, startLocation.name, startLocation.country || "", {
             save: false,
