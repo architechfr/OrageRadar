@@ -1,8 +1,18 @@
 # OrageRadar — état du projet
 
-_Dernière mise à jour : 16 août 2026_
+_Dernière mise à jour : 16 août 2026 (soir)_
 
-## Dernier cycle
+## Dernier cycle (correctif régression)
+
+**Bug** : depuis la carte radar autonome, plus aucune carte visible au zoom ville — tuiles RainViewer remplacées par le filigrane « Zoom Level Not Supported » (voile sombre), signalé par capture d'écran utilisateur sur mobile (Campagnan, zoom 12).
+
+**Diagnostic** (sondage direct des tuiles, analyse pixel) : RainViewer ne sert les tuiles 256px que jusqu'au **zoom 7** ; au-delà, il renvoie un PNG filigrane de 1370 octets (voile noir alpha 140 + texte). La sélection d'une ville zoome à 12-13 → toutes les tuiles étaient le filigrane.
+
+**Correctif** : `maxNativeZoom: 7, maxZoom: 19` sur les couches radar (les 2 apps) — Leaflet agrandit lui-même les tuiles z7 aux zooms ville. Vérifié : au zoom 12, seules des tuiles z=7 sont demandées, 0 cassée, marqueur exact, animation OK. Cache SW v5.
+
+**Règle générale apprise** : pour toute source de tuiles tierce, sonder la limite de zoom réelle (taille/contenu des réponses à z croissant) AVANT de câbler la carte, et poser `maxNativeZoom` en conséquence.
+
+## Cycle précédent
 
 **Tâche** : supprimer le point bleu de géolocalisation parasite qui plaçait systématiquement l'utilisateur au mauvais endroit (ex. région parisienne alors que Campagnan était sélectionné).
 

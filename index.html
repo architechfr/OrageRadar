@@ -502,8 +502,12 @@
             radarFrames = [...((d.radar && d.radar.past) || []).slice(-7), ...((d.radar && d.radar.nowcast) || [])];
             // Couches créées mais PAS ajoutées à la carte : seule l'image active
             // est montée (sinon 7× les tuiles à chaque vue → 429 RainViewer).
+            // maxNativeZoom 7 : RainViewer ne sert pas de tuiles au-delà
+            // (filigrane « Zoom Level Not Supported ») — Leaflet agrandit
+            // lui-même les tuiles z7 aux zooms ville.
             radarLayers = radarFrames.map(f =>
-                L.tileLayer(`${radarHost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`, { opacity: 0, zIndex: 400 })
+                L.tileLayer(`${radarHost}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
+                    { opacity: 0, zIndex: 400, maxNativeZoom: 7, maxZoom: 19 })
             );
             radarFramesLoadedAt = Date.now();
             startRadarAnimation();
