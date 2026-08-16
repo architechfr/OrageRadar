@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   apply-cycle-8:
-    if: github.event.head_commit.message == 'chore: apply cycle 8 patch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,15 +48,6 @@ jobs:
               raise SystemExit('Expected service worker cache v10 not found')
           sw.write_text(sw_text.replace('orageradar-v10', 'orageradar-v11', 1), encoding='utf-8')
 
-          state = Path('docs/STATE.md')
-          state_text = state.read_text(encoding='utf-8')
-          cycle = '''# OrageRadar — état du projet\n\n_Dernière mise à jour : 16 août 2026 (soir, cycle 8)_\n\n## Dernier cycle — restauration du dernier lieu consulté\n\n**Objectif** : ne plus revenir systématiquement sur Paris au démarrage.\n\n**Implémentation** : chaque appel à `setLocation()` mémorise le lieu courant (`lat`, `lon`, nom, pays, zoom) dans `localStorage.lastLocation`. Au lancement, `init()` restaure ce lieu s'il est valide ; sinon l'application revient proprement sur Paris. Les données invalides ou corrompues sont ignorées.\n\n**Impact** : une ville choisie via recherche, favori ou « Ma position » devient le lieu de reprise au prochain lancement. L'historique de recherche reste indépendant.\n\n**Cache PWA** : `orageradar-v10` → `orageradar-v11`.\n\n**Vérification** : syntaxe JavaScript extraite de `index.html` vérifiée par Node.js dans GitHub Actions.\n\n## Historique précédent\n'''
-          old_header = '# OrageRadar — état du projet\n\n_Dernière mise à jour : 16 août 2026 (soir, cycle 7)_\n'
-          if old_header not in state_text:
-              raise SystemExit('STATE header not found')
-          state_text = state_text.replace(old_header, cycle, 1)
-          state.write_text(state_text, encoding='utf-8')
-
       - name: Check inline JavaScript syntax
         shell: bash
         run: |
@@ -76,7 +66,7 @@ jobs:
         run: |
           git config user.name "OrageRadar Automation"
           git config user.email "actions@users.noreply.github.com"
-          git add index.html sw.js docs/STATE.md
+          git add index.html sw.js
           git diff --cached --check
           git commit -m "feat: restore last viewed location"
           git push origin main
