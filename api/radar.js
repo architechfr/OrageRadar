@@ -1,9 +1,9 @@
 const { meteoFranceFetch, publicError } = require("../lib/meteoFrance");
 
-// API Ciblee Donnees Radar — endpoint mosaics.
-// This first backend route intentionally exposes metadata only. Binary radar
-// products will be proxied by a dedicated endpoint once the account subscription
-// has been validated against the live Meteo-France response.
+// API Ciblee Donnees Radar — catalogue officiel des mosaïques.
+// La documentation Météo-France expose ce catalogue via DPRadar/v1/mosaiques.
+// Cette route ne renvoie encore que les métadonnées JSON ; le produit HDF5
+// (ex. LAME_D_EAU maille 500 m) sera proxifié par une route binaire dédiée.
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "https://architechfr.github.io");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -13,7 +13,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
 
   try {
-    const upstream = await meteoFranceFetch("/public/DPClim/v1/radar/mosaics");
+    const upstream = await meteoFranceFetch("/public/DPRadar/v1/mosaiques");
     const body = await upstream.text();
 
     if (!upstream.ok) {
@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       source: "Meteo-France",
-      product: "radar-mosaics",
+      product: "radar-mosaics-catalog",
       fetchedAt: new Date().toISOString(),
       data
     });
