@@ -1,0 +1,64 @@
+name: Remove radar play button
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/remove-radar-play.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove useless radar play control
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          css = '''        #radar-play {\n            border: 1px solid #475569; background: #1e293b; color: #e2e8f0;\n            width: 26px; height: 26px; border-radius: 999px; cursor: pointer;\n            display: flex; align-items: center; justify-content: center; font-size: 11px;\n        }\n        #radar-play:hover { background: #334155; }\n'''
+          if css not in s: raise SystemExit('radar-play css not found')
+          s = s.replace(css, '', 1)
+
+          html = '''                <button id="radar-play" onclick="toggleRadarPlay()" title="Lecture / pause">\n                    <i class="fa-solid fa-pause"></i>\n                </button>\n'''
+          if html not in s: raise SystemExit('radar-play html not found')
+          s = s.replace(html, '', 1)
+
+          js = '''    function toggleRadarPlay() {\n        if (radarAnimTimer) stopRadarAnimation(); else startRadarAnimation();\n    }\n\n    function updateRadarPlayButton() {\n        const b = document.getElementById("radar-play");\n        if (b) b.innerHTML = radarAnimTimer\n            ? '<i class="fa-solid fa-pause"></i>'\n            : '<i class="fa-solid fa-play"></i>';\n    }\n\n'''
+          if js not in s: raise SystemExit('radar play functions not found')
+          s = s.replace(js, '', 1)
+
+          s = s.replace('        updateRadarPlayButton();\n', '', 2)
+          p.write_text(s, encoding='utf-8')
+
+          sw = Path('sw.js')
+          t = sw.read_text(encoding='utf-8')
+          if 'orageradar-v11' not in t: raise SystemExit('expected v11 cache not found')
+          sw.write_text(t.replace('orageradar-v11', 'orageradar-v12', 1), encoding='utf-8')
+
+      - name: Validate JS
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', html, flags=re.S)
+          Path('/tmp/orageradar-inline.js').write_text('\n'.join(s for s in scripts if s.strip()), encoding='utf-8')
+          PY
+          node --check /tmp/orageradar-inline.js
+          git diff --check
+
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "OrageRadar Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html sw.js
+          git commit -m "fix: remove useless radar play button"
+          git push origin main
