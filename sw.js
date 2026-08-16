@@ -1,4 +1,4 @@
-const CACHE_NAME = "orageradar-v14";
+const CACHE_NAME = "orageradar-v12";
 
 const FILES_TO_CACHE = [
     "./",

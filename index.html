@@ -118,6 +118,14 @@
             <span>Ma position</span>
         </button>
 
+        <a href="./intelligence.html"
+           title="Analyse approfondie : consensus multi-sources et score de confiance"
+           class="w-full md:w-auto shrink-0 px-4 py-2.5 rounded-2xl text-sm border border-sky-500/40 flex items-center justify-center gap-x-2 hover:brightness-110"
+           style="background:linear-gradient(135deg,rgba(14,165,233,.22),rgba(124,58,237,.22))">
+            <i class="fa-solid fa-satellite-dish text-sky-300"></i>
+            <span>Intelligence</span>
+        </a>
+
         <button onclick="openSettings()"
                 class="w-full md:w-auto shrink-0 px-4 py-2.5 bg-slate-800 rounded-2xl text-sm border border-slate-700 flex items-center justify-center gap-x-2 hover:bg-slate-700">
             <i class="fa-solid fa-gear text-slate-300"></i>
@@ -220,6 +228,36 @@
         </div>
         <div id="daily-chart" class="relative h-32 mb-5"></div>
         <div id="daily-forecast" class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3"></div>
+    </div>
+
+    <!-- Risque de feu de forêt -->
+    <div id="fire-card" class="hidden bg-slate-900 border border-slate-700 rounded-3xl p-6 mb-8">
+        <div class="flex items-center justify-between gap-4 mb-4">
+            <h3 class="font-semibold flex items-center gap-x-2">
+                <i class="fa-solid fa-fire text-orange-400"></i>
+                Risque de feu de forêt
+            </h3>
+            <span id="fire-forest" class="text-xs text-slate-500 text-right"></span>
+        </div>
+
+        <div class="flex items-center gap-5 mb-4">
+            <div id="fire-gauge" class="shrink-0 rounded-2xl px-4 py-3 text-center" style="min-width:104px">
+                <div id="fire-score" class="text-3xl font-black leading-none">--</div>
+                <div class="text-[11px] opacity-70 mt-1">sur 100</div>
+            </div>
+            <div class="min-w-0">
+                <div id="fire-level" class="text-lg font-bold"></div>
+                <div id="fire-advice" class="text-sm text-slate-400 mt-0.5"></div>
+            </div>
+        </div>
+
+        <div id="fire-factors" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm"></div>
+
+        <p class="text-xs text-slate-500 mt-4">
+            Indice indicatif calculé à partir des conditions météo du lieu.
+            Il ne remplace pas la <strong>Météo des forêts</strong> de Météo-France
+            ni les arrêtés préfectoraux, qui restent les références officielles.
+        </p>
     </div>
 
     <div id="models-card" class="hidden bg-slate-900 border border-slate-700 rounded-3xl p-6 mb-8">
@@ -894,6 +932,7 @@
         refreshMap();
         await loadWeather(lat, lon, cityName, showCountry ? country : "");
         loadModelComparison(lat, lon);   // en tâche de fond, n'affecte pas le reste
+        loadFireRisk(lat, lon);          // idem : risque de feu de forêt
 
         if (save) saveToHistory(cityName, country, lat, lon);
 
@@ -1127,6 +1166,145 @@
         } catch (error) {
             alert("Impossible de charger la météo pour cette ville.");
         }
+    }
+
+    // ── Risque de feu de forêt ──────────────────────────────────────────────
+    // Indice indicatif inspiré de la logique du Fire Weather Index : on croise
+    // la sécheresse de l'air et du sol, le déficit hydrique récent, le vent et
+    // la température. Aucune clé d'API n'est nécessaire.
+    // Ce n'est PAS la Météo des forêts officielle de Météo-France.
+
+    const FIRE_LEVELS = [
+        { max: 25,  label: "Faible",     color: "#34d399",
+          advice: "Conditions peu propices à la propagation. Vigilance habituelle." },
+        { max: 50,  label: "Modéré",     color: "#fbbf24",
+          advice: "Proscrire les travaux par points chauds sans surveillance (meulage, soudure)." },
+        { max: 70,  label: "Élevé",      color: "#fb923c",
+          advice: "Travaux par points chauds à éviter. Prévoir extincteurs et point d'eau accessibles." },
+        { max: 101, label: "Très élevé", color: "#ef4444",
+          advice: "Suspendre tout travail par points chauds. Vérifier les arrêtés préfectoraux en vigueur." }
+    ];
+
+    function fireLevelFor(score) {
+        return FIRE_LEVELS.find(l => score < l.max) || FIRE_LEVELS[FIRE_LEVELS.length - 1];
+    }
+
+    const clamp100 = v => Math.max(0, Math.min(100, v));
+
+    function computeFireRisk(current, rain7d) {
+        const rh    = current.relative_humidity_2m ?? 60;
+        const vpd   = current.vapour_pressure_deficit ?? 0.5;   // kPa : air asséchant
+        const wind  = current.wind_speed_10m ?? 0;
+        const temp  = current.temperature_2m ?? 15;
+        const soil  = current.soil_moisture_0_to_1cm;           // m³/m³ en surface
+
+        const factors = {
+            air:        clamp100(100 - rh),                     // air sec
+            evaporation: clamp100((vpd / 3) * 100),             // pouvoir asséchant
+            secheresse: clamp100(100 - rain7d * 5),             // pluie des 7 derniers jours
+            vent:       clamp100((wind / 60) * 100),            // potentiel de propagation
+            chaleur:    clamp100(((temp - 15) / 25) * 100),
+            sol:        soil == null ? null : clamp100(((0.30 - soil) / 0.28) * 100)
+        };
+
+        // Le sol n'est pas fourni partout : on redistribue son poids sur l'air.
+        const wSol = factors.sol == null ? 0 : 0.10;
+        const wAir = 0.25 + (0.10 - wSol);
+        const score = Math.round(
+            wAir * factors.air +
+            0.20 * factors.evaporation +
+            0.22 * factors.secheresse +
+            0.13 * factors.vent +
+            0.10 * factors.chaleur +
+            wSol * (factors.sol || 0)
+        );
+        return { score: clamp100(score), factors, rain7d, rh, wind, vpd };
+    }
+
+    // Végétation proche (OpenStreetMap). Mise en cache définitive par lieu :
+    // une forêt ne bouge pas, et Overpass limite fortement le débit (HTTP 429).
+    async function forestNearby(lat, lon) {
+        const key = `forest:${lat.toFixed(2)},${lon.toFixed(2)}`;
+        const cached = localStorage.getItem(key);
+        if (cached !== null) return JSON.parse(cached);
+        try {
+            // « out count » évite le plafond d'une liste tronquée, qui faisait
+            // afficher le même total partout.
+            const query = `[out:json][timeout:15];(way["landuse"="forest"](around:2000,${lat},${lon});`
+                        + `way["natural"="wood"](around:2000,${lat},${lon}););out count;`;
+            const r = await fetch("https://overpass-api.de/api/interpreter",
+                { method: "POST", body: "data=" + encodeURIComponent(query),
+                  headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+            if (!r.ok) return null;                       // 429 ou indisponible
+            const d = await r.json();
+            const count = parseInt(d.elements?.[0]?.tags?.total ?? "0", 10);
+            localStorage.setItem(key, JSON.stringify(count));
+            return count;
+        } catch (e) { return null; }                     // dégradation silencieuse
+    }
+
+    let fireRequestToken = 0;
+
+    async function loadFireRisk(lat, lon) {
+        const token = ++fireRequestToken;
+        const card = document.getElementById("fire-card");
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+                + "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,"
+                + "vapour_pressure_deficit,soil_moisture_0_to_1cm"
+                + "&hourly=precipitation&past_days=7&forecast_days=1&timezone=auto";
+            const data = await (await fetch(url)).json();
+            if (token !== fireRequestToken) return;       // lieu changé entre-temps
+            if (!data.current) { card.classList.add("hidden"); return; }
+
+            const rain7d = (data.hourly?.precipitation || [])
+                .filter(v => v != null).reduce((a, b) => a + b, 0);
+            const risk = computeFireRisk(data.current, rain7d);
+            renderFireRisk(risk);
+            card.classList.remove("hidden");
+
+            const forests = await forestNearby(lat, lon);
+            if (token !== fireRequestToken) return;
+            // On annonce une présence, pas une surface : le nombre de polygones
+            // OpenStreetMap ne dit rien de l'étendue réelle du massif.
+            const el = document.getElementById("fire-forest");
+            el.textContent = forests == null ? ""
+                : forests === 0 ? "Aucune zone boisée recensée dans un rayon de 2 km"
+                : `Zones boisées à proximité — ${forests} recensée${forests > 1 ? "s" : ""} dans 2 km (OpenStreetMap)`;
+            el.style.color = forests > 0 ? "#fb923c" : "";
+        } catch (e) {
+            console.error("Risque incendie indisponible :", e);
+            card.classList.add("hidden");
+        }
+    }
+
+    function renderFireRisk(risk) {
+        const level = fireLevelFor(risk.score);
+        const gauge = document.getElementById("fire-gauge");
+        gauge.style.background = level.color + "1f";
+        gauge.style.border = "1px solid " + level.color + "66";
+        gauge.style.color = level.color;
+        document.getElementById("fire-score").textContent = risk.score;
+
+        const levelEl = document.getElementById("fire-level");
+        levelEl.textContent = level.label;
+        levelEl.style.color = level.color;
+        document.getElementById("fire-advice").textContent = level.advice;
+
+        const rows = [
+            ["Humidité de l'air", Math.round(risk.rh) + " %",        risk.factors.air],
+            ["Pluie sur 7 jours", risk.rain7d.toFixed(1) + " mm",    risk.factors.secheresse],
+            ["Vent",              Math.round(risk.wind) + " km/h",   risk.factors.vent],
+            ["Air asséchant",     risk.vpd.toFixed(2) + " kPa",      risk.factors.evaporation]
+        ];
+        document.getElementById("fire-factors").innerHTML = rows.map(([nom, valeur, poids]) => `
+            <div class="bg-slate-800/60 border border-slate-700 rounded-2xl p-3">
+                <div class="text-xs text-slate-500">${nom}</div>
+                <div class="font-semibold mt-0.5">${valeur}</div>
+                <div class="mt-2 h-1 rounded-full bg-slate-700 overflow-hidden">
+                    <div class="h-full rounded-full" style="width:${Math.round(poids)}%;background:${fireLevelFor(poids).color}"></div>
+                </div>
+            </div>`).join("");
     }
 
     // ── Comparaison des modèles de prévision ────────────────────────────────
