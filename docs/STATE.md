@@ -1,6 +1,21 @@
 # OrageRadar — état du projet
 
-## Dernier cycle — carte France des feux actifs
+## Dernier cycle — alerte incendie sur les favoris + FIRMS confirmée en prod
+
+**Vérification FIRMS** : l'utilisateur a confirmé par capture d'écran Vercel que `FIRMS_MAP_KEY` est bien configurée sur le projet `axion-chantier` (scope Production and Preview, ajoutée avant les derniers déploiements) — l'accès direct m'était bloqué (réseau du bac à sable + connecteur Vercel MCP sans visibilité sur ce projet). Test live sur téléphone confirmé : bandeau vert « Aucun feu détecté... », indice 72/100, tout fonctionne.
+
+**Carte France mise en ligne** : la branche du cycle précédent a été fusionnée sur `main` sur demande explicite de l'utilisateur (push direct, fast-forward, pas de PR).
+
+**Alerte incendie sur les favoris** (version choisie par l'utilisateur face à deux options : légère aujourd'hui vs push serveur plus tard) :
+- Réutilise le mode point existant de `/api/fires` (un appel par favori, rayon 25 km, `days=1`) — pas de changement backend nécessaire.
+- Bandeau `#fav-fire-alert` au-dessus de la liste des favoris, alimenté par `checkFavoritesFires()` appelée dans `renderFavorites()` aux côtés de `refreshFavoritesWeather()`, même cadence (10 min, dégradation silencieuse par favori en cas d'échec réseau).
+- Case à cocher « Alerte incendie sur mes favoris » dans Réglages : à l'activation, `Notification.requestPermission()` est demandée ; si refusée ou API absente, la case revient à décoché (le bandeau visuel reste actif dans tous les cas, seule la notification navigateur est conditionnée à l'option + permission).
+- Déduplication des notifications par `localStorage.notifiedFires` (clé `lat,lon@foyer_lat,foyer_lon`) pour ne pas renotifier le même foyer à chaque rafraîchissement.
+- **Limite assumée et documentée (FAQ)** : ce n'est pas un vrai push serveur — l'alerte ne se déclenche que si l'app est ouverte ou récemment rouverte. Le push complet (VAPID + abonnements + cron) reste en roadmap comme chantier séparé.
+
+**Tests** (Playwright, backend `/api/fires` mocké) : bandeau correct avec un favori en alerte (« Incendie détecté près de votre favori — Avignon (12.4 km) »), case Réglages testée dans les deux sens (permission accordée → sauvegardée `true`, refusée → repasse à `false`), modale se ferme bien dans les deux cas malgré le `await` ajouté sur `saveSettingsFromUI()`, aucune erreur JS non attendue.
+
+## Cycle précédent — carte France des feux actifs
 
 **Besoin** : le module incendie ne montrait les foyers FIRMS qu'autour d'un seul lieu (rayon 100 km). L'utilisateur veut une vue d'ensemble de tous les foyers actifs sur la France.
 
@@ -175,4 +190,4 @@ Chaque bouton porte une infobulle expliquant le compromis.
 
 ## Prochaine priorité recommandée
 
-Vérifier en conditions réelles que `FIRMS_MAP_KEY` est configurée sur le projet Vercel `axion-chantier` (le bandeau et la carte se masquent silencieusement sinon — aucune erreur visible pour l'utilisateur). Ensuite : rafraîchissement automatique du radar toutes les 5 min + bouton play/pause (voir ROADMAP), et décider si `incendies-france.html` doit être porté dans AXION.
+Faire tester en conditions réelles l'alerte incendie sur les favoris (activer la notification dans Réglages, un vrai favori proche d'un foyer actif si l'actualité le permet, sinon test avec un favori temporaire proche d'un foyer visible sur la carte France). Ensuite : décider si `incendies-france.html` doit être porté dans AXION, ou passer à la vigilance officielle Météo-France (bloquée sur une clé API à créer par l'utilisateur).

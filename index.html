@@ -227,6 +227,8 @@
                 </button>
             </div>
 
+            <div id="fav-fire-alert" class="hidden rounded-2xl px-3 py-2.5 text-xs mb-3 flex items-start gap-2"></div>
+
             <div id="favorites-list" class="space-y-2"></div>
         </div>
     </div>
@@ -437,6 +439,14 @@
                 </div>
                 <input id="setting-auto-refresh" type="checkbox" class="w-5 h-5 accent-sky-500">
             </label>
+
+            <label class="flex items-center justify-between gap-4 bg-slate-800/60 border border-slate-700 rounded-2xl px-4 py-3">
+                <div>
+                    <div class="text-sm font-medium">Alerte incendie sur mes favoris</div>
+                    <div class="text-xs text-slate-400">Notification si un foyer satellite est détecté près d'un favori — nécessite l'app ouverte ou récemment rouverte</div>
+                </div>
+                <input id="setting-fire-alerts" type="checkbox" class="w-5 h-5 accent-orange-500">
+            </label>
         </div>
 
         <!-- Installation sur l'appareil -->
@@ -519,6 +529,10 @@
                 <p class="text-slate-400 mt-2">Des détections thermiques (satellites NASA, capteur VIIRS) dans un rayon de 100 km. Une détection peut aussi correspondre à un brûlage agricole ou industriel, pas uniquement à un feu de forêt : à confirmer avant toute alerte.</p>
             </details>
             <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Comment être alerté si un favori est près d'un incendie ?</summary>
+                <p class="text-slate-400 mt-2">Activez « Alerte incendie sur mes favoris » dans Réglages et autorisez les notifications. À chaque ouverture (ou réouverture) de l'application, vos favoris sont vérifiés contre les foyers détectés dans un rayon de 25 km. Ce n'est pas une notification serveur : l'app doit être ouverte ou récemment rouverte pour déclencher l'alerte.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
                 <summary class="font-medium cursor-pointer">Comment installer l'application ?</summary>
                 <p class="text-slate-400 mt-2">Ouvrez Réglages : sur Android/Chrome/Edge, un bouton « Installer sur cet appareil » apparaît. Sur iPhone/iPad, utilisez le menu Partager de Safari puis « Sur l'écran d'accueil ». L'application se comporte alors comme une app normale, sans barre d'adresse.</p>
             </details>
@@ -552,7 +566,7 @@
 
     const LAST_LOCATION_KEY = "lastLocation";
     const SETTINGS_KEY = "orageradarSettings";
-    const DEFAULT_SETTINGS = { startup: "last", radarOpacity: 0.8, radarSpeed: 900, autoRefresh: true };
+    const DEFAULT_SETTINGS = { startup: "last", radarOpacity: 0.8, radarSpeed: 900, autoRefresh: true, fireAlerts: false };
 
     function loadSettings() {
         try {
@@ -571,6 +585,7 @@
         document.getElementById("setting-opacity").value = Math.round(appSettings.radarOpacity * 100);
         document.getElementById("setting-speed").value = appSettings.radarSpeed;
         document.getElementById("setting-auto-refresh").checked = !!appSettings.autoRefresh;
+        document.getElementById("setting-fire-alerts").checked = !!appSettings.fireAlerts;
         updateSettingsLabels();
         updateInstallUI();
         initShareQr();
@@ -684,18 +699,32 @@
         document.getElementById("setting-speed-value").textContent = speed <= 700 ? "Rapide" : speed >= 1300 ? "Lente" : "Normale";
     }
 
-    function saveSettingsFromUI() {
+    async function saveSettingsFromUI() {
+        let fireAlerts = document.getElementById("setting-fire-alerts").checked;
+
+        // La case ne reste cochée que si la permission navigateur est accordée :
+        // sans notification possible, l'alerte se limite au bandeau visuel.
+        if (fireAlerts && "Notification" in window && Notification.permission !== "granted") {
+            const result = await Notification.requestPermission().catch(() => "denied");
+            if (result !== "granted") fireAlerts = false;
+        } else if (fireAlerts && !("Notification" in window)) {
+            fireAlerts = false;
+        }
+
         appSettings = {
             startup: document.getElementById("setting-startup").value,
             radarOpacity: Number(document.getElementById("setting-opacity").value) / 100,
             radarSpeed: Number(document.getElementById("setting-speed").value),
-            autoRefresh: document.getElementById("setting-auto-refresh").checked
+            autoRefresh: document.getElementById("setting-auto-refresh").checked,
+            fireAlerts
         };
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings));
         radarLayers.forEach((layer, index) => layer.setOpacity(index === radarFrameIndex ? appSettings.radarOpacity : 0));
         if (radarAnimTimer) startRadarAnimation();
         scheduleRadarRefresh();
         closeSettings();
+
+        if (fireAlerts) { favFireAt = 0; checkFavoritesFires(); }   // vérification immédiate à l'activation
     }
 
     function scheduleRadarRefresh() {
@@ -1289,6 +1318,75 @@
         }
     }
 
+    // ── Alerte incendie sur les favoris ──────────────────────────────────────
+    // Réutilise le mode point de /api/fires (déjà utilisé pour le lieu affiché) :
+    // un appel par favori, rayon resserré (juste « à proximité », pas un survol
+    // large), avec le même cache CDN de 10 min côté backend.
+    const FAV_FIRE_RADIUS_KM = 25;
+    let favFireAt = 0, favFireLoading = false;
+
+    function notifiedFireIds() {
+        try { return JSON.parse(localStorage.getItem("notifiedFires") || "[]"); }
+        catch (e) { return []; }
+    }
+    function markFiresNotified(ids) {
+        const merged = [...new Set([...notifiedFireIds(), ...ids])].slice(-200);
+        localStorage.setItem("notifiedFires", JSON.stringify(merged));
+    }
+    function fireAlertId(item, fire) {
+        return `${item.lat},${item.lon}@${fire.lat.toFixed(2)},${fire.lon.toFixed(2)}`;
+    }
+
+    async function checkFavoritesFires() {
+        const favorites = getFavorites();
+        const el = document.getElementById("fav-fire-alert");
+        if (!favorites.length) { el.classList.add("hidden"); return; }
+        if (favFireLoading || Date.now() - favFireAt < 10 * 60 * 1000) return;
+
+        favFireLoading = true;
+        try {
+            const hits = (await Promise.all(favorites.map(async item => {
+                try {
+                    const url = backendUrl(`/api/fires?lat=${item.lat}&lon=${item.lon}&radius=${FAV_FIRE_RADIUS_KM}&days=1`);
+                    const r = await fetch(url);
+                    if (!r.ok) return null;
+                    const d = await r.json();
+                    return (d.ok && d.count) ? { item, nearest: d.fires[0] } : null;
+                } catch (e) { return null; }   // dégradation silencieuse, favori par favori
+            }))).filter(Boolean);
+
+            favFireAt = Date.now();
+            renderFavoritesFireAlert(hits);
+        } finally {
+            favFireLoading = false;
+        }
+    }
+
+    function renderFavoritesFireAlert(hits) {
+        const el = document.getElementById("fav-fire-alert");
+        if (!hits.length) { el.classList.add("hidden"); return; }
+
+        const names = hits.map(h => `${h.item.name} (${h.nearest.distanceKm} km)`).join(", ");
+        el.className = "rounded-2xl px-3 py-2.5 text-xs mb-3 flex items-start gap-2 alert-storm";
+        el.innerHTML = `<i class="fa-solid fa-fire-flame-curved mt-0.5"></i>
+            <span><strong>Incendie détecté près de ${hits.length > 1 ? "vos favoris" : "votre favori"}</strong> — ${names}.
+            <a href="./incendies-france.html" class="underline">Voir la carte →</a></span>`;
+        el.classList.remove("hidden");
+
+        // Notification navigateur : seulement les nouveaux foyers (déjà notifiés
+        // = ignorés), et seulement si l'utilisateur a activé l'option en Réglages.
+        if (!appSettings.fireAlerts || !("Notification" in window) || Notification.permission !== "granted") return;
+        const known = notifiedFireIds();
+        const fresh = hits.filter(h => !known.includes(fireAlertId(h.item, h.nearest)));
+        fresh.forEach(h => {
+            new Notification("🔥 Incendie près de " + h.item.name, {
+                body: `Détection satellite à ${h.nearest.distanceKm} km — brûlage agricole possible, à vérifier.`,
+                icon: "./logo.png"
+            });
+        });
+        if (fresh.length) markFiresNotified(fresh.map(h => fireAlertId(h.item, h.nearest)));
+    }
+
     function renderFavorites() {
         const container = document.getElementById("favorites-list");
         const favorites = getFavorites();
@@ -1346,6 +1444,7 @@
         });
 
         refreshFavoritesWeather();   // se coupe d'elle-même si le cache est frais
+        checkFavoritesFires();       // idem
     }
 
     async function loadWeather(lat, lon, cityName, country = "") {

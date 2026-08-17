@@ -25,6 +25,7 @@
 - [x] **Moteur de consensus partagé** entre l'accueil et Intelligence (mêmes 8 sources, même formule d'accord)
 - [x] **Installation en app, QR de partage, FAQ** dans les Réglages
 - [x] **Carte France des feux actifs** (`incendies-france.html`) : tous les foyers FIRMS du pays, pas seulement autour d'un lieu
+- [x] **Alerte incendie sur les favoris** (version app ouverte) : vérification à chaque rafraîchissement des favoris + notification navigateur, réglable dans Réglages
 
 ## Prochaines priorités (validées avec l'utilisateur le 16/08/2026)
 
@@ -33,8 +34,8 @@
 3. **Scrubber temporel** sur la frise radar (le play/pause existe déjà).
 4. **Notifications push** locales quand l'alerte passe au niveau orage (PWA installée).
 5. Mode « chantier » partagé avec AXION dans un fichier JS commun (éviter la double maintenance).
-6. ⚠️ Vérifier que `FIRMS_MAP_KEY` est bien configurée en production sur le projet Vercel `axion-chantier` — sinon le module incendie (bandeau, carte chantier, carte France) reste silencieusement masqué.
-7. Décider si `incendies-france.html` doit être porté dans AXION (`apps/chantier/meteo.html` est pensé pour un chantier précis, pas une vue pays).
+6. Décider si `incendies-france.html` doit être porté dans AXION (`apps/chantier/meteo.html` est pensé pour un chantier précis, pas une vue pays).
+7. Alerte incendie « vraie » en push serveur (notification même app fermée) — nécessite VAPID, stockage des abonnements et un cron côté backend Vercel : chantier à part entière, pas juste une itération de la version actuelle.
 
 _Note : couche satellite infrarouge RainViewer inutilisable pour l'instant (`satellite.infrared` renvoie 0 image)._
 
