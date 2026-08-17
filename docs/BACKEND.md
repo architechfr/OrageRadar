@@ -34,6 +34,10 @@ Le backend échange cette valeur contre un access token temporaire via `https://
 5. Appeler `/api/radar` et vérifier le format retourné par l'abonnement réel.
 6. Seulement après cette validation, connecter le frontend au radar Météo-France avec RainViewer en fallback.
 
+## ⚠️ Ce fichier api/fires.js n'est pas celui déployé
+
+`axion-chantier.vercel.app` déploie depuis le dépôt **`architechfr/AXION-CHANTIER`**, pas depuis ce dépôt OrageRadar. `api/fires.js` existe donc en double, avec un style différent (ES5, CORS multi-origines côté AXION-CHANTIER). Toute évolution de ce endpoint doit être **portée manuellement** dans `AXION-CHANTIER/api/fires.js` puis poussée là-bas pour prendre effet en production — l'oubli de ce portage a cassé la carte France à sa mise en ligne (mode `bbox` absent côté serveur réel). Le fichier de ce dépôt sert de référence/historique.
+
 ## Feux actifs — NASA FIRMS
 
 `GET /api/fires?lat=&lon=&radius=&days=` (mode point, autour d'un lieu)

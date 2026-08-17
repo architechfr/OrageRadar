@@ -1,5 +1,17 @@
 # OrageRadar — état du projet
 
+## Correctif — carte France vide en prod (mode bbox manquant côté backend)
+
+**Symptôme signalé par l'utilisateur** : `incendies-france.html` en ligne affichait « Impossible de charger les foyers actifs pour le moment. ».
+
+**Cause** : `api/fires.js` de ce dépôt n'est **pas** le code réellement exécuté par `axion-chantier.vercel.app`. Ce projet Vercel déploie depuis un dépôt séparé, `architechfr/AXION-CHANTIER` (attaché à cette session, cloné dans `/workspace/axion-chantier`), qui contient sa **propre version** de `api/fires.js` (style ES5, CORS multi-origines) — le mode `bbox` ajouté ici ne s'y trouvait pas, donc l'appel de la carte France échouait sur `INVALID_COORDINATES`.
+
+**Correctif** : mode `bbox` porté dans `AXION-CHANTIER/api/fires.js` en respectant son style existant (pas une réécriture). Testé en local (fetch simulé) : bbox OK avec dédoublonnage satellite, mode point inchangé (aucun risque de régression sur le module chantier ni l'alerte favoris). Poussé sur `main` de ce dépôt (déploiement Vercel automatique) — accord explicite de l'utilisateur requis et obtenu, car hors du dépôt/branche désignés pour cette session.
+
+**Point de vigilance retenu pour les prochains cycles** : `api/fires.js` existe en double, dans deux dépôts, avec des styles différents. Toute future évolution du backend feux actifs doit être portée **manuellement** dans `AXION-CHANTIER/api/fires.js` (le fichier de ce dépôt sert de référence/historique mais n'est pas déployé tel quel). Envisager à terme de documenter ceci plus clairement dans `docs/BACKEND.md`, voire de faire de `AXION-CHANTIER` la seule source de vérité pour ce fichier.
+
+**Priorité confirmée par l'utilisateur** : malgré ce détour backend, OrageRadar reste le projet prioritaire de cette session — l'intervention sur AXION-CHANTIER est un moyen, pas un changement de périmètre.
+
 ## Dernier cycle — alerte incendie sur les favoris + FIRMS confirmée en prod
 
 **Vérification FIRMS** : l'utilisateur a confirmé par capture d'écran Vercel que `FIRMS_MAP_KEY` est bien configurée sur le projet `axion-chantier` (scope Production and Preview, ajoutée avant les derniers déploiements) — l'accès direct m'était bloqué (réseau du bac à sable + connecteur Vercel MCP sans visibilité sur ce projet). Test live sur téléphone confirmé : bandeau vert « Aucun feu détecté... », indice 72/100, tout fonctionne.
