@@ -428,9 +428,93 @@
             </label>
         </div>
 
+        <!-- Installation sur l'appareil -->
+        <div class="border-t border-slate-800 mt-5 pt-5">
+            <div class="text-sm font-medium mb-2">Installer l'application</div>
+            <button id="install-btn" onclick="installApp()"
+                    class="hidden w-full px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium items-center justify-center gap-2">
+                <i class="fa-solid fa-arrow-down-to-line"></i> Installer sur cet appareil
+            </button>
+            <p id="install-status" class="hidden text-xs text-slate-400 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5"></p>
+            <div id="install-ios-help" class="hidden text-xs text-slate-400 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5">
+                Sur iPhone/iPad : ouvrez le menu <i class="fa-solid fa-arrow-up-from-bracket mx-0.5"></i> « Partager » de Safari,
+                puis choisissez <strong>« Sur l'écran d'accueil »</strong>.
+            </div>
+        </div>
+
+        <!-- Partage -->
+        <div class="border-t border-slate-800 mt-5 pt-5">
+            <div class="text-sm font-medium mb-3">Partager l'application</div>
+            <div class="flex items-center gap-4">
+                <img id="share-qr" alt="QR code de l'application" width="104" height="104"
+                     class="rounded-xl border border-slate-700 bg-white shrink-0">
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs text-slate-500 mb-1">À faire scanner pour ouvrir l'application</div>
+                    <div id="share-url" class="text-xs text-slate-400 truncate"></div>
+                    <button onclick="copyShareLink()" id="copy-link-btn"
+                            class="mt-2 text-xs px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700">
+                        <i class="fa-solid fa-link mr-1"></i> Copier le lien
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aide -->
+        <div class="border-t border-slate-800 mt-5 pt-5">
+            <button onclick="openFaq()"
+                    class="w-full px-4 py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700 text-sm font-medium flex items-center justify-center gap-2">
+                <i class="fa-solid fa-circle-question text-sky-400"></i> Mode d'emploi / FAQ
+            </button>
+        </div>
+
         <div class="flex gap-3 mt-6">
             <button onclick="closeSettings()" class="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm">Annuler</button>
             <button onclick="saveSettingsFromUI()" class="flex-1 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Mode d'emploi / FAQ -->
+<div id="faq-modal" class="hidden fixed inset-0 z-[2000] bg-slate-950/75 backdrop-blur-sm p-4" onclick="if(event.target===this) closeFaq()">
+    <div class="max-w-lg mx-auto mt-8 bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-5" style="max-height:85vh;overflow:auto" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between mb-5">
+            <h2 class="text-lg font-semibold flex items-center gap-2"><i class="fa-solid fa-circle-question text-sky-400"></i> Mode d'emploi</h2>
+            <button onclick="closeFaq()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700" aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="space-y-2 text-sm">
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3" open>
+                <summary class="font-medium cursor-pointer">Rechercher un lieu et l'enregistrer en favori</summary>
+                <p class="text-slate-400 mt-2">Tapez le nom d'une ville dans la barre de recherche, ou utilisez « Ma position ». Cliquez l'étoile pour l'ajouter aux favoris : vos lieux suivis apparaissent alors avec température et alerte en un coup d'œil.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Pourquoi deux rendus de radar ?</summary>
+                <p class="text-slate-400 mt-2">« Radar animé » est une carte propre à l'application : le repère reste toujours exactement sur le lieu choisi. « Radar Windy » offre un rendu plus riche, mais Windy affiche son propre point de géolocalisation (souvent approximatif). Choisissez celui qui vous convient, votre préférence est mémorisée.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Que veut dire « Accord des modèles » ?</summary>
+                <p class="text-slate-400 mt-2">Plusieurs centres de prévision (AROME, ECMWF, ICON, GFS, UKMO, GEM, JMA…) sont interrogés séparément. Quand ils s'accordent, la prévision est plus fiable ; quand ils divergent, mieux vaut se fier au radar en temps réel plutôt qu'à la prévision.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">D'où vient l'anticipation « pluie dans X min » ?</summary>
+                <p class="text-slate-400 mt-2">Des prévisions au quart d'heure sur 3 heures (Open-Meteo), combinées à la direction du vent qui pilote le déplacement des cellules. C'est une anticipation, pas une certitude : le radar reste la référence pour le très court terme.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Le risque de feu de forêt est-il officiel ?</summary>
+                <p class="text-slate-400 mt-2">Non : c'est un indice indicatif calculé à partir des conditions météo locales (humidité, vent, sécheresse). Il ne remplace pas la Météo des forêts de Météo-France ni les arrêtés préfectoraux, qui restent les références officielles.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Que montrent les « feux actifs détectés par satellite » ?</summary>
+                <p class="text-slate-400 mt-2">Des détections thermiques (satellites NASA, capteur VIIRS) dans un rayon de 100 km. Une détection peut aussi correspondre à un brûlage agricole ou industriel, pas uniquement à un feu de forêt : à confirmer avant toute alerte.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Comment installer l'application ?</summary>
+                <p class="text-slate-400 mt-2">Ouvrez Réglages : sur Android/Chrome/Edge, un bouton « Installer sur cet appareil » apparaît. Sur iPhone/iPad, utilisez le menu Partager de Safari puis « Sur l'écran d'accueil ». L'application se comporte alors comme une app normale, sans barre d'adresse.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Sources des données</summary>
+                <p class="text-slate-400 mt-2">Météo et modèles : Open-Meteo. Radar précipitations : RainViewer. Rendu radar alternatif : Windy. Feux actifs : NASA FIRMS. Zones boisées : OpenStreetMap. Toutes ces sources sont publiques et gratuites.</p>
+            </details>
         </div>
     </div>
 </div>
@@ -477,6 +561,8 @@
         document.getElementById("setting-speed").value = appSettings.radarSpeed;
         document.getElementById("setting-auto-refresh").checked = !!appSettings.autoRefresh;
         updateSettingsLabels();
+        updateInstallUI();
+        initShareQr();
         document.getElementById("settings-modal").classList.remove("hidden");
     }
 
@@ -486,6 +572,98 @@
 
     function closeSettingsFromBackdrop(event) {
         if (event.target.id === "settings-modal") closeSettings();
+    }
+
+    // ── Installation en application (PWA) ────────────────────────────────────
+    // Chrome/Edge/Android déclenchent beforeinstallprompt : on intercepte
+    // l'invite native du navigateur pour la relancer depuis notre bouton.
+    // iOS Safari ne déclenche jamais cet événement — installation manuelle
+    // uniquement via le menu Partager, d'où le mode d'emploi dédié.
+    let deferredInstallPrompt = null;
+
+    window.addEventListener("beforeinstallprompt", event => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        updateInstallUI();
+    });
+
+    window.addEventListener("appinstalled", () => {
+        deferredInstallPrompt = null;
+        updateInstallUI();
+    });
+
+    function isStandaloneApp() {
+        return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }
+
+    function isIOSDevice() {
+        return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    }
+
+    function updateInstallUI() {
+        const btn = document.getElementById("install-btn");
+        const status = document.getElementById("install-status");
+        const iosHelp = document.getElementById("install-ios-help");
+        if (!btn) return;
+
+        btn.classList.add("hidden");
+        status.classList.add("hidden");
+        iosHelp.classList.add("hidden");
+
+        if (isStandaloneApp()) {
+            status.textContent = "L'application est déjà installée sur cet appareil.";
+            status.classList.remove("hidden");
+        } else if (deferredInstallPrompt) {
+            btn.classList.remove("hidden");
+            btn.classList.add("flex");
+        } else if (isIOSDevice()) {
+            iosHelp.classList.remove("hidden");
+        } else {
+            status.textContent = "Ce navigateur ne propose pas encore l'installation ici — essayez Chrome ou Edge.";
+            status.classList.remove("hidden");
+        }
+    }
+
+    async function installApp() {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        updateInstallUI();
+    }
+
+    // ── Partage (lien + QR code) ─────────────────────────────────────────────
+    function appShareUrl() {
+        return location.origin + location.pathname.replace(/index\.html$/, "");
+    }
+
+    function initShareQr() {
+        const url = appShareUrl();
+        document.getElementById("share-url").textContent = url;
+        document.getElementById("share-qr").src =
+            `https://api.qrserver.com/v1/create-qr-code/?size=208x208&margin=8&data=${encodeURIComponent(url)}`;
+    }
+
+    async function copyShareLink() {
+        const btn = document.getElementById("copy-link-btn");
+        const original = btn.innerHTML;
+        try {
+            await navigator.clipboard.writeText(appShareUrl());
+            btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> Lien copié';
+        } catch (e) {
+            btn.innerHTML = "Copiez : " + appShareUrl();
+        }
+        setTimeout(() => { btn.innerHTML = original; }, 2000);
+    }
+
+    // ── Mode d'emploi / FAQ ───────────────────────────────────────────────────
+    function openFaq() {
+        closeSettings();
+        document.getElementById("faq-modal").classList.remove("hidden");
+    }
+
+    function closeFaq() {
+        document.getElementById("faq-modal").classList.add("hidden");
     }
 
     function updateSettingsLabels() {
