@@ -57,6 +57,8 @@
         }
         /* Carte radar autonome (Leaflet + RainViewer) — pas de point bleu parasite */
         #radar-map { height: 650px; width: 100%; background: #0b1120; }
+        #fire-map { background: #0b1120; }
+        #fire-map .leaflet-container { background: #0b1120; }
         #radar-map .leaflet-container { background: #0b1120; }
         /* Fond de carte éclairci : dark_nolabels est très sombre d'origine */
         .basemap-tiles { filter: brightness(1.9) saturate(1.15) contrast(.95); }
@@ -244,6 +246,16 @@
         </div>
 
         <div id="fire-active" class="hidden rounded-2xl px-4 py-3 text-sm mb-4 flex items-start gap-2"></div>
+
+        <div id="fire-map-wrap" class="hidden relative mb-4">
+            <div id="fire-map" class="rounded-2xl overflow-hidden" style="height:320px"></div>
+            <div class="absolute bottom-3 left-3 z-[600] rounded-xl px-3 py-2 text-xs"
+                 style="background:rgba(15,23,42,.88);border:1px solid #334155">
+                <div class="flex items-center gap-1.5 mb-1"><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#ef4444"></span> Moins de 3 h</div>
+                <div class="flex items-center gap-1.5 mb-1"><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#f97316"></span> 3 à 12 h</div>
+                <div class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#fbbf24"></span> Plus de 12 h</div>
+            </div>
+        </div>
 
         <div class="hidden">
         </div>
@@ -1281,10 +1293,10 @@
     async function loadActiveFires(lat, lon, token) {
         const el = document.getElementById("fire-active");
         const url = backendUrl(`/api/fires?lat=${lat}&lon=${lon}&radius=100`);
-        if (!url) { el.classList.add("hidden"); return; }   // backend non configuré
+        if (!url) { el.classList.add("hidden"); hideFireMap(); return; }   // backend non configuré
         try {
             const r = await fetch(url);
-            if (!r.ok) { el.classList.add("hidden"); return; }
+            if (!r.ok) { el.classList.add("hidden"); hideFireMap(); return; }
             const d = await r.json();
             if (token !== fireRequestToken || !d.ok) return;
 
@@ -1292,6 +1304,7 @@
                 el.className = "rounded-2xl px-4 py-3 text-sm mb-4 flex items-start gap-2 alert-clear";
                 el.innerHTML = `<i class="fa-solid fa-circle-check mt-0.5"></i>
                     <span>Aucun feu détecté par satellite dans un rayon de ${d.radiusKm} km sur les dernières 24 h.</span>`;
+                hideFireMap();
             } else {
                 const nearest = d.fires[0];
                 const age = nearest.detectedAt
@@ -1301,11 +1314,74 @@
                     <span><strong>${d.count} foyer${d.count > 1 ? "s" : ""} détecté${d.count > 1 ? "s" : ""} par satellite</strong>
                     dans un rayon de ${d.radiusKm} km — le plus proche à <strong>${nearest.distanceKm} km</strong>${age != null ? `, il y a ${age} h` : ""}.
                     <span class="text-xs opacity-75">Détection thermique VIIRS : peut aussi correspondre à un brûlage agricole ou industriel.</span></span>`;
+                renderFireMap(lat, lon, d.fires);
             }
             el.classList.remove("hidden");
         } catch (e) {
             el.classList.add("hidden");   // dégradation silencieuse
+            hideFireMap();
         }
+    }
+
+    // ── Carte des foyers actifs (Leaflet) ────────────────────────────────────
+    let fireMap = null, fireMapMarkers = [];
+
+    function ensureFireMap() {
+        if (fireMap) return fireMap;
+        fireMap = L.map("fire-map", { attributionControl: false });
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+            subdomains: "abcd", maxZoom: 19, className: "basemap-tiles"
+        }).addTo(fireMap);
+        fireMap.createPane("labels");
+        fireMap.getPane("labels").style.zIndex = 650;
+        fireMap.getPane("labels").style.pointerEvents = "none";
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+            subdomains: "abcd", maxZoom: 19, pane: "labels"
+        }).addTo(fireMap);
+        return fireMap;
+    }
+
+    function confidenceLabel(c) {
+        return c === "h" ? "élevée" : c === "n" ? "nominale" : c === "l" ? "faible" : "inconnue";
+    }
+
+    function renderFireMap(lat, lon, fires) {
+        document.getElementById("fire-map-wrap").classList.remove("hidden");
+        const map = ensureFireMap();
+        setTimeout(() => map.invalidateSize(), 60);
+
+        fireMapMarkers.forEach(m => map.removeLayer(m));
+        fireMapMarkers = [];
+
+        const site = L.circleMarker([lat, lon], {
+            radius: 8, color: "#fff", weight: 2.5, fillColor: "#38bdf8", fillOpacity: 1
+        }).addTo(map).bindTooltip("Chantier", { direction: "top", offset: [0, -8] });
+        fireMapMarkers.push(site);
+
+        const bounds = L.latLngBounds([[lat, lon]]);
+        fires.forEach(f => {
+            const power = f.power || 0;
+            const radius = Math.max(5, Math.min(16, 5 + power / 5));
+            const age = f.detectedAt ? Math.round((Date.now() - new Date(f.detectedAt)) / 3600000) : null;
+            const color = age != null && age <= 3 ? "#ef4444" : age != null && age <= 12 ? "#f97316" : "#fbbf24";
+            const marker = L.circleMarker([f.lat, f.lon], {
+                radius, color: "#fff", weight: 1, fillColor: color, fillOpacity: 0.85
+            }).addTo(map);
+            marker.bindPopup(
+                `<strong>${f.distanceKm} km</strong> du chantier` +
+                (age != null ? `<br>détecté il y a ${age} h` : "") +
+                (f.power ? `<br>puissance ${f.power} MW` : "") +
+                `<br>confiance ${confidenceLabel(f.confidence)}`
+            );
+            fireMapMarkers.push(marker);
+            bounds.extend([f.lat, f.lon]);
+        });
+
+        map.fitBounds(bounds.pad(0.25), { maxZoom: 10 });
+    }
+
+    function hideFireMap() {
+        document.getElementById("fire-map-wrap").classList.add("hidden");
     }
 
     let fireRequestToken = 0;
