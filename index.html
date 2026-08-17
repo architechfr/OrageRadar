@@ -533,6 +533,10 @@
                 <p class="text-slate-400 mt-2">Activez « Alerte incendie sur mes favoris » dans Réglages et autorisez les notifications. À chaque ouverture (ou réouverture) de l'application, vos favoris sont vérifiés contre les foyers détectés dans un rayon de 25 km. Ce n'est pas une notification serveur : l'app doit être ouverte ou récemment rouverte pour déclencher l'alerte.</p>
             </details>
             <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
+                <summary class="font-medium cursor-pointer">Comment voir le détail heure par heure d'un jour à venir ?</summary>
+                <p class="text-slate-400 mt-2">Cliquez sur une des 7 tuiles des « Prévisions 7 jours » (ex. « mercredi ») : le détail heure par heure de cette journée s'ouvre — température, risque de pluie, vent et orage éventuel, sans nouveau chargement.</p>
+            </details>
+            <details class="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
                 <summary class="font-medium cursor-pointer">Comment installer l'application ?</summary>
                 <p class="text-slate-400 mt-2">Ouvrez Réglages : sur Android/Chrome/Edge, un bouton « Installer sur cet appareil » apparaît. Sur iPhone/iPad, utilisez le menu Partager de Safari puis « Sur l'écran d'accueil ». L'application se comporte alors comme une app normale, sans barre d'adresse.</p>
             </details>
@@ -544,6 +548,17 @@
     </div>
 </div>
 
+<!-- Détail d'un jour (heure par heure) -->
+<div id="day-detail-modal" class="hidden fixed inset-0 z-[2000] bg-slate-950/75 backdrop-blur-sm p-4" onclick="closeDayDetailFromBackdrop(event)">
+    <div class="max-w-lg mx-auto mt-8 bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-5" style="max-height:85vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between mb-4 shrink-0">
+            <h2 id="day-detail-title" class="text-lg font-semibold capitalize"></h2>
+            <button onclick="closeDayDetail()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 shrink-0" aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="day-detail-summary" class="flex items-center gap-4 bg-slate-800/60 border border-slate-700 rounded-2xl px-4 py-3 mb-4 shrink-0"></div>
+        <div id="day-detail-hours" class="space-y-1 overflow-y-auto"></div>
+    </div>
+</div>
 
 <script>
     const DEFAULT_LOCATION = {
@@ -563,6 +578,7 @@
     let currentCountry = DEFAULT_LOCATION.country;
     let currentZoom = DEFAULT_ZOOM;
     let currentMode = "radar";
+    let currentHourly = null;   // détail heure par heure du lieu affiché, sur 7 jours
 
     const LAST_LOCATION_KEY = "lastLocation";
     const SETTINGS_KEY = "orageradarSettings";
@@ -1482,6 +1498,8 @@
                 "Mis à jour à " +
                 new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
+            currentHourly = data.hourly || null;   // réutilisé par le détail jour par jour
+
             renderStormAlert(current, data);
             renderNowcast(current, data);
             renderHourlyForecast(data);
@@ -2020,6 +2038,7 @@
 
         const count = Math.min(7, D.time.length);
         const days = Array.from({ length: count }, (_, i) => ({
+            iso: D.time[i],
             date: new Date(D.time[i] + "T12:00:00"),
             code: D.weather_code[i],
             max: D.temperature_2m_max[i],
@@ -2034,7 +2053,7 @@
             const storm = stormLevel(d.code) >= 2;
             const wet = d.prob >= 50 || d.rain >= 1;
             const div = document.createElement("div");
-            div.className = "bg-slate-800/70 border border-slate-700 rounded-2xl p-3 text-center";
+            div.className = "bg-slate-800/70 border border-slate-700 rounded-2xl p-3 text-center cursor-pointer hover:bg-slate-800 hover:border-slate-600";
             const dayLabel = i === 0 ? "Aujourd'hui" : d.date.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "");
             const risk = storm
                 ? '<span class="text-violet-300"><i class="fa-solid fa-bolt"></i> Orage</span>'
@@ -2045,7 +2064,9 @@
                 <div class="text-3xl my-2">${info.emoji}</div>
                 <div class="font-semibold">${Math.round(d.max)}° <span class="text-slate-500 font-normal">/ ${Math.round(d.min)}°</span></div>
                 <div class="text-xs mt-2">${risk}</div>
-                <div class="text-[11px] text-slate-500 mt-1">${d.rain.toFixed(1)} mm</div>`;
+                <div class="text-[11px] text-slate-500 mt-1">${d.rain.toFixed(1)} mm</div>
+                <div class="text-[10px] text-slate-600 mt-1"><i class="fa-solid fa-list"></i> Détail</div>`;
+            div.onclick = () => openDayDetail(d);
             container.appendChild(div);
         });
 
@@ -2064,6 +2085,67 @@
             <div class="absolute top-0 left-0 text-[11px] text-orange-300">Max</div>
             <div class="absolute bottom-0 left-0 text-[11px] text-sky-300">Min</div>`;
         card.classList.remove("hidden");
+    }
+
+    // ── Détail d'un jour (heure par heure) ───────────────────────────────────
+    // Réutilise le hourly déjà chargé pour les 7 jours (currentHourly) :
+    // aucun appel réseau supplémentaire au clic sur un jour.
+    function openDayDetail(day) {
+        const info = getWeatherInfo(day.code);
+        document.getElementById("day-detail-title").textContent =
+            day.date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+        document.getElementById("day-detail-summary").innerHTML = `
+            <div class="text-4xl shrink-0">${info.emoji}</div>
+            <div class="min-w-0">
+                <div class="font-semibold">${info.desc}</div>
+                <div class="text-sm text-slate-400">${Math.round(day.max)}° / ${Math.round(day.min)}° · ${day.rain.toFixed(1)} mm · ${Math.round(day.prob)}% de pluie</div>
+            </div>`;
+
+        const hoursEl = document.getElementById("day-detail-hours");
+        hoursEl.innerHTML = "";
+
+        const H = currentHourly;
+        const indices = H && H.time
+            ? H.time.map((t, i) => ({ t, i })).filter(({ t }) => t.startsWith(day.iso)).map(({ i }) => i)
+            : [];
+
+        if (!indices.length) {
+            hoursEl.innerHTML = `<div class="text-sm text-slate-500 text-center py-6">Détail horaire indisponible pour ce jour.</div>`;
+        } else {
+            indices.forEach(i => {
+                const hourInfo = getWeatherInfo(H.weather_code[i]);
+                const hourDate = new Date(H.time[i]);
+                const prob = H.precipitation_probability ? H.precipitation_probability[i] : null;
+                const rain = H.precipitation ? H.precipitation[i] : null;
+                const gust = H.wind_gusts_10m ? H.wind_gusts_10m[i] : null;
+                const cape = H.cape ? (H.cape[i] || 0) : 0;
+                const stormy = stormLevel(H.weather_code[i]) >= 2 || cape >= 1000;
+
+                const row = document.createElement("div");
+                row.className = "flex items-center gap-3 px-3 py-2 rounded-xl" + (stormy ? " bg-violet-500/10" : "");
+                row.innerHTML = `
+                    <div class="text-xs text-slate-400 w-9 shrink-0">${hourDate.toLocaleTimeString("fr-FR", { hour: "2-digit" })}h</div>
+                    <div class="text-xl w-7 shrink-0 text-center">${hourInfo.emoji}</div>
+                    <div class="font-semibold w-9 shrink-0">${Math.round(H.temperature_2m[i])}°</div>
+                    <div class="flex-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-400 min-w-0">
+                        ${prob != null ? `<span><i class="fa-solid fa-droplet text-sky-400"></i> ${Math.round(prob)}%</span>` : ""}
+                        ${rain != null && rain > 0 ? `<span>${rain.toFixed(1)} mm</span>` : ""}
+                        ${gust != null ? `<span><i class="fa-solid fa-wind"></i> ${Math.round(gust)} km/h</span>` : ""}
+                        ${stormy ? `<span class="text-violet-300"><i class="fa-solid fa-bolt"></i> Orage</span>` : ""}
+                    </div>`;
+                hoursEl.appendChild(row);
+            });
+        }
+
+        document.getElementById("day-detail-modal").classList.remove("hidden");
+    }
+
+    function closeDayDetail() {
+        document.getElementById("day-detail-modal").classList.add("hidden");
+    }
+
+    function closeDayDetailFromBackdrop(event) {
+        if (event.target.id === "day-detail-modal") closeDayDetail();
     }
 
     async function showSuggestions() {

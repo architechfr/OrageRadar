@@ -26,6 +26,7 @@
 - [x] **Installation en app, QR de partage, FAQ** dans les Réglages
 - [x] **Carte France des feux actifs** (`incendies-france.html`) : tous les foyers FIRMS du pays, pas seulement autour d'un lieu
 - [x] **Alerte incendie sur les favoris** (version app ouverte) : vérification à chaque rafraîchissement des favoris + notification navigateur, réglable dans Réglages
+- [x] **Détail heure par heure d'un jour** : clic sur une tuile des « Prévisions 7 jours » → détail horaire (température, pluie, vent, orage), sans nouvel appel réseau
 
 ## Prochaines priorités (validées avec l'utilisateur le 16/08/2026)
 

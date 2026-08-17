@@ -1,5 +1,17 @@
 # OrageRadar — état du projet
 
+## Dernier cycle — détail heure par heure d'un jour à venir
+
+**Retour terrain** : testeuse externe (sœur de l'utilisateur) — la carte 7 jours donne max/min et une pastille de risque par jour, mais pas moyen de savoir ce qui est prévu *pendant* une journée précise (ex. « mercredi prochain, qu'est-ce qui est prévu dans la journée ? »).
+
+**Implémentation** : chaque tuile des « Prévisions 7 jours » est cliquable et ouvre une modale de détail horaire (même famille que Réglages/FAQ). Aucun nouvel appel réseau : `loadWeather()` demande déjà l'horaire sur 7 jours (`forecast_days=7`) pour la frise "Prévisions horaires" (qui n'en affiche que 8h) — ce hourly complet est maintenant conservé dans `currentHourly` et filtré par jour au clic (`H.time[i].startsWith(day.iso)`).
+
+**Contenu de la modale** : résumé (icône, description, max/min, cumul pluie, % de pluie max) puis 24 lignes heure par heure (icône, température, % de pluie, mm si non nul, rafales, badge orage si `stormLevel >= 2` ou `cape >= 1000`, ligne teintée violet si orageuse).
+
+**Tests** (Playwright, données Open-Meteo simulées avec un mercredi orageux 14h-17h) : 7 tuiles cliquables, modale ouverte sur la bonne date (« mercredi 19 août »), résumé correct, 24 lignes horaires générées, 4 lignes orageuses correctement détectées et surlignées. Vérification structurelle de l'ouverture/fermeture (classe `hidden` retirée/ajoutée) : correcte.
+
+**Limite du bac à sable de test notée pour ne pas la re-découvrir** : Tailwind CDN ne génère pas les classes `fixed`/`z-[…]` dans cet environnement de test hors-ligne (`position: static` au lieu de `fixed` en `getComputedStyle`) — constaté à l'identique sur `settings-modal`, code de production non modifié et déjà validé en direct par l'utilisateur. Ce n'est donc pas un bug du code, juste une limite du test local sans accès réseau complet à Tailwind CDN ; la vérification fiable dans ce contexte est l'état de la classe `hidden`, pas le rendu visuel Playwright.
+
 ## Correctif — carte France vide en prod (mode bbox manquant côté backend)
 
 **Symptôme signalé par l'utilisateur** : `incendies-france.html` en ligne affichait « Impossible de charger les foyers actifs pour le moment. ».
