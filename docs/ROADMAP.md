@@ -21,6 +21,11 @@
 
 - [x] **Tableau de bord des favoris** : température, émoji et pastille de risque par lieu, en une requête groupée
 
+- [x] **Module risque de feu de forêt** : indice 0-100, proximité boisée, foyers actifs NASA FIRMS par lieu (carte + bandeau)
+- [x] **Moteur de consensus partagé** entre l'accueil et Intelligence (mêmes 8 sources, même formule d'accord)
+- [x] **Installation en app, QR de partage, FAQ** dans les Réglages
+- [x] **Carte France des feux actifs** (`incendies-france.html`) : tous les foyers FIRMS du pays, pas seulement autour d'un lieu
+
 ## Prochaines priorités (validées avec l'utilisateur le 16/08/2026)
 
 1. **Réglages** : lieu d'ouverture (dernier lieu / favori principal / ma position — aujourd'hui toujours Paris), réglages du radar (vitesse, opacité, rafraîchissement auto 5 min), prévisions 7 jours avec graphique.
@@ -28,6 +33,8 @@
 3. **Scrubber temporel** sur la frise radar (le play/pause existe déjà).
 4. **Notifications push** locales quand l'alerte passe au niveau orage (PWA installée).
 5. Mode « chantier » partagé avec AXION dans un fichier JS commun (éviter la double maintenance).
+6. ⚠️ Vérifier que `FIRMS_MAP_KEY` est bien configurée en production sur le projet Vercel `axion-chantier` — sinon le module incendie (bandeau, carte chantier, carte France) reste silencieusement masqué.
+7. Décider si `incendies-france.html` doit être porté dans AXION (`apps/chantier/meteo.html` est pensé pour un chantier précis, pas une vue pays).
 
 _Note : couche satellite infrarouge RainViewer inutilisable pour l'instant (`satellite.infrared` renvoie 0 image)._
 

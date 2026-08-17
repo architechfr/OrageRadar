@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrageRadar — Carte des feux actifs (France)</title>
+    <meta name="description" content="Foyers actifs détectés par satellite (NASA FIRMS) sur la France entière.">
+    <meta name="theme-color" content="#020617">
+
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        #france-fire-map { height: 78vh; min-height: 420px; width: 100%; background: #0b1120; }
+        #france-fire-map .leaflet-container { background: #0b1120; }
+        .basemap-tiles { filter: brightness(1.9) saturate(1.15) contrast(.95); }
+        #ff-legend {
+            position: absolute; bottom: 14px; left: 14px; z-index: 600;
+            background: rgba(15,23,42,.9); border: 1px solid #334155;
+            border-radius: 12px; padding: 8px 12px; font-size: 12px; color: #cbd5e1;
+        }
+        #ff-updated {
+            position: absolute; bottom: 14px; right: 14px; z-index: 600;
+            background: rgba(15,23,42,.9); border: 1px solid #334155;
+            border-radius: 12px; padding: 6px 12px; font-size: 12px;
+        }
+        .ff-day.active { background-color: #0284c7; border-color: #38bdf8; color: white; }
+        @media (max-width: 640px) {
+            #france-fire-map { height: 64vh; }
+            #ff-legend { font-size: 11px; padding: 6px 9px; }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+
+<div class="max-w-screen-xl mx-auto px-4 sm:px-6 py-6">
+
+    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+        <div class="flex items-center gap-x-3 shrink-0">
+            <img src="logo.png" alt="OrageRadar" class="w-[52px] h-[52px] object-contain">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">Carte des feux actifs</h1>
+                <p class="text-xs text-orange-300 -mt-1">Détections satellite sur toute la France</p>
+            </div>
+        </div>
+        <a href="./" class="w-full md:w-auto shrink-0 px-4 py-2.5 bg-slate-800 rounded-2xl text-sm border border-slate-700 flex items-center justify-center gap-x-2 hover:bg-slate-700">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Retour à OrageRadar</span>
+        </a>
+    </div>
+
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl p-4 sm:p-6">
+
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div id="ff-summary" class="text-sm text-slate-300">Chargement des détections…</div>
+            <div class="flex items-center gap-2">
+                <div class="flex rounded-xl border border-slate-700 overflow-hidden">
+                    <button class="ff-day active px-3 py-2 text-sm bg-slate-800 hover:bg-slate-700" data-days="1">24 h</button>
+                    <button class="ff-day px-3 py-2 text-sm bg-slate-800 hover:bg-slate-700 border-l border-slate-700" data-days="2">48 h</button>
+                    <button class="ff-day px-3 py-2 text-sm bg-slate-800 hover:bg-slate-700 border-l border-slate-700" data-days="3">72 h</button>
+                </div>
+                <button id="ff-refresh" class="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm hover:bg-slate-700">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="ff-error" class="hidden rounded-2xl px-4 py-3 text-sm mb-4 flex items-start gap-2"
+             style="background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.35);color:#fca5a5">
+            <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+            <span id="ff-error-text"></span>
+        </div>
+
+        <div class="relative">
+            <div id="france-fire-map" class="rounded-2xl overflow-hidden"></div>
+            <div id="ff-legend">
+                <div class="flex items-center gap-1.5 mb-1"><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#ef4444"></span> Moins de 3 h</div>
+                <div class="flex items-center gap-1.5 mb-1"><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#f97316"></span> 3 à 12 h</div>
+                <div class="flex items-center gap-1.5 mb-1"><span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#fbbf24"></span> Plus de 12 h</div>
+                <div class="text-slate-400 mt-1.5 pt-1.5 border-t border-slate-700">Taille = puissance radiative</div>
+            </div>
+            <div id="ff-updated" class="hidden"></div>
+        </div>
+
+        <p class="text-xs text-slate-500 mt-4">
+            Détections thermiques satellite VIIRS (NASA FIRMS, résolution 375 m). Une détection peut aussi
+            correspondre à un brûlage agricole ou industriel, pas nécessairement un feu de forêt.
+            Affichage limité aux foyers les plus intenses en cas de forte activité.
+            Ceci est une vue d'ensemble indicative : la <strong>Météo des forêts</strong> de Météo-France et les
+            arrêtés préfectoraux restent les références officielles.
+        </p>
+    </div>
+</div>
+
+<script>
+    // Les fonctions serverless vivent dans le projet Vercel d'AXION (clé NASA
+    // FIRMS côté serveur) — même backend que le module incendie de l'accueil.
+    const BACKEND_BASE = "https://axion-chantier.vercel.app";
+    function backendUrl(path) {
+        if (location.hostname.endsWith("axion-chantier.vercel.app")) return path;
+        return BACKEND_BASE + path;
+    }
+
+    // Emprise France métropolitaine + Corse, avec marge.
+    const FRANCE_BBOX = "-5.3,41.2,9.9,51.3";
+    const FRANCE_BOUNDS = [[41.2, -5.3], [51.3, 9.9]];
+
+    let map = null, markers = [];
+    let currentDays = 1;
+    let requestToken = 0;
+
+    function ensureMap() {
+        if (map) return map;
+        map = L.map("france-fire-map", { attributionControl: false });
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+            subdomains: "abcd", maxZoom: 19, className: "basemap-tiles"
+        }).addTo(map);
+        map.createPane("labels");
+        map.getPane("labels").style.zIndex = 650;
+        map.getPane("labels").style.pointerEvents = "none";
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+            subdomains: "abcd", maxZoom: 19, pane: "labels"
+        }).addTo(map);
+        map.fitBounds(FRANCE_BOUNDS);
+        return map;
+    }
+
+    function confidenceLabel(c) {
+        return c === "h" ? "élevée" : c === "n" ? "nominale" : c === "l" ? "faible" : "inconnue";
+    }
+
+    function clearMarkers() {
+        markers.forEach(m => map.removeLayer(m));
+        markers = [];
+    }
+
+    function renderFires(fires) {
+        clearMarkers();
+        fires.forEach(f => {
+            const power = f.power || 0;
+            const radius = Math.max(4, Math.min(16, 4 + power / 6));
+            const age = f.detectedAt ? Math.round((Date.now() - new Date(f.detectedAt)) / 3600000) : null;
+            const color = age != null && age <= 3 ? "#ef4444" : age != null && age <= 12 ? "#f97316" : "#fbbf24";
+            const marker = L.circleMarker([f.lat, f.lon], {
+                radius, color: "#fff", weight: 1, fillColor: color, fillOpacity: 0.85
+            }).addTo(map);
+            marker.bindPopup(
+                `<strong>${f.lat.toFixed(3)}, ${f.lon.toFixed(3)}</strong>` +
+                (age != null ? `<br>détecté il y a ${age} h` : "") +
+                (f.power ? `<br>puissance ${f.power} MW` : "") +
+                `<br>confiance ${confidenceLabel(f.confidence)}`
+            );
+            markers.push(marker);
+        });
+    }
+
+    function setError(message) {
+        const el = document.getElementById("ff-error");
+        if (!message) { el.classList.add("hidden"); return; }
+        document.getElementById("ff-error-text").textContent = message;
+        el.classList.remove("hidden");
+    }
+
+    async function loadFrance() {
+        const token = ++requestToken;
+        ensureMap();
+        setError(null);
+        document.getElementById("ff-summary").textContent = "Chargement des détections…";
+
+        const url = backendUrl(`/api/fires?bbox=${encodeURIComponent(FRANCE_BBOX)}&days=${currentDays}`);
+        try {
+            const r = await fetch(url);
+            const d = await r.json().catch(() => null);
+            if (token !== requestToken) return;
+
+            if (!r.ok || !d || !d.ok) {
+                clearMarkers();
+                const known = { FIRMS_KEY_MISSING: "Service non configuré côté serveur (clé NASA FIRMS manquante).",
+                                 FIRMS_UNAVAILABLE: "NASA FIRMS est momentanément indisponible." };
+                setError(known[d && d.error] || "Impossible de charger les foyers actifs pour le moment.");
+                document.getElementById("ff-summary").textContent = "Aucune donnée disponible.";
+                return;
+            }
+
+            renderFires(d.fires);
+            const periodLabel = currentDays === 1 ? "24 h" : currentDays === 2 ? "48 h" : "72 h";
+            document.getElementById("ff-summary").textContent = d.count
+                ? `${d.count} foyer${d.count > 1 ? "s" : ""} détecté${d.count > 1 ? "s" : ""} en France — dernières ${periodLabel}`
+                    + (d.truncated ? " (affichage limité aux plus intenses)" : "")
+                : `Aucun foyer détecté en France sur les dernières ${periodLabel}.`;
+
+            const updated = document.getElementById("ff-updated");
+            updated.textContent = "Mis à jour à " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+            updated.classList.remove("hidden");
+        } catch (e) {
+            if (token !== requestToken) return;
+            clearMarkers();
+            setError("Impossible de charger les foyers actifs pour le moment.");
+            document.getElementById("ff-summary").textContent = "Aucune donnée disponible.";
+        }
+    }
+
+    document.querySelectorAll(".ff-day").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".ff-day").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentDays = Number(btn.dataset.days);
+            loadFrance();
+        });
+    });
+    document.getElementById("ff-refresh").addEventListener("click", loadFrance);
+
+    loadFrance();
+    // Les détections FIRMS se rafraîchissent toutes les quelques heures ; le
+    // cache CDN est de 10 min, inutile d'interroger plus souvent.
+    setInterval(loadFrance, 10 * 60 * 1000);
+</script>
+</body>
+</html>

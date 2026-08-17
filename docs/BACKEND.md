@@ -36,7 +36,13 @@ Le backend échange cette valeur contre un access token temporaire via `https://
 
 ## Feux actifs — NASA FIRMS
 
-`GET /api/fires?lat=&lon=&radius=&days=`
+`GET /api/fires?lat=&lon=&radius=&days=` (mode point, autour d'un lieu)
+ou `GET /api/fires?bbox=west,south,east,north&days=` (mode région — utilisé
+par `incendies-france.html` avec l'emprise de la France métropolitaine +
+Corse, `bbox=20°` maximum en largeur/hauteur). En mode `bbox`, pas de
+`distanceKm` (aucun centre) et le tri se fait par puissance radiative
+décroissante ; jusqu'à 300 foyers renvoyés (`truncated: true` au-delà) contre
+50 en mode point.
 
 - Variable secrète Vercel : **`FIRMS_MAP_KEY`** (clé gratuite obtenue sur
   `firms.modaps.eosdis.nasa.gov/api/map_key/`). Comme pour Météo-France, elle

@@ -53,22 +53,40 @@ module.exports = async function handler(req, res) {
     return res.status(503).json({ ok: false, error: "FIRMS_KEY_MISSING" });
   }
 
-  const lat = Number(req.query.lat);
-  const lon = Number(req.query.lon);
-  const radiusKm = Math.min(300, Math.max(10, Number(req.query.radius) || 100));
   const days = Math.min(3, Math.max(1, Number(req.query.days) || 1));
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(400).json({ ok: false, error: "INVALID_COORDINATES" });
-  }
+  // Mode « bbox » : survol d'une région entière (ex. la France) plutôt que
+  // d'un point avec rayon — utilisé par la carte France, sans chantier précis.
+  const bboxParam = req.query.bbox;
+  let mode, area, lat = null, lon = null, radiusKm = null;
 
-  // Emprise géographique : 1° de latitude ≈ 111 km ; la longitude se resserre
-  // vers les pôles, d'où la division par le cosinus de la latitude.
-  const dLat = radiusKm / 111;
-  const dLon = radiusKm / (111 * Math.max(0.2, Math.cos(toRadians(lat))));
-  const area = [lon - dLon, lat - dLat, lon + dLon, lat + dLat]
-    .map(v => v.toFixed(4)).join(",");
+  if (bboxParam) {
+    const parts = String(bboxParam).split(",").map(Number);
+    const [west, south, east, north] = parts;
+    const valid = parts.length === 4 && parts.every(Number.isFinite)
+      && west < east && south < north && (east - west) <= 20 && (north - south) <= 20;
+    if (!valid) {
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(400).json({ ok: false, error: "INVALID_BBOX" });
+    }
+    mode = "bbox";
+    area = parts.map(v => v.toFixed(4)).join(",");
+  } else {
+    lat = Number(req.query.lat);
+    lon = Number(req.query.lon);
+    radiusKm = Math.min(300, Math.max(10, Number(req.query.radius) || 100));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(400).json({ ok: false, error: "INVALID_COORDINATES" });
+    }
+    mode = "point";
+    // Emprise géographique : 1° de latitude ≈ 111 km ; la longitude se
+    // resserre vers les pôles, d'où la division par le cosinus de la latitude.
+    const dLat = radiusKm / 111;
+    const dLon = radiusKm / (111 * Math.max(0.2, Math.cos(toRadians(lat))));
+    area = [lon - dLon, lat - dLat, lon + dLon, lat + dLat]
+      .map(v => v.toFixed(4)).join(",");
+  }
 
   try {
     const results = await Promise.allSettled(SOURCES.map(async source => {
@@ -95,7 +113,7 @@ module.exports = async function handler(req, res) {
         return {
           lat: flat,
           lon: flon,
-          distanceKm: Math.round(haversine(lat, lon, flat, flon) * 10) / 10,
+          distanceKm: mode === "point" ? Math.round(haversine(lat, lon, flat, flon) * 10) / 10 : null,
           detectedAt: acquisitionDate(row),
           confidence: row.confidence || null,   // VIIRS : l / n / h
           power: Number(row.frp) || null,       // puissance radiative (MW)
@@ -103,8 +121,7 @@ module.exports = async function handler(req, res) {
           source: row.source
         };
       })
-      .filter(f => f && f.distanceKm <= radiusKm)
-      .sort((a, b) => a.distanceKm - b.distanceKm);
+      .filter(f => f && (mode === "point" ? f.distanceKm <= radiusKm : true));
 
     // Les deux satellites survolent la même zone : un incendie unique est
     // détecté deux fois. Sans regroupement, le comptage serait doublé.
@@ -114,21 +131,29 @@ module.exports = async function handler(req, res) {
       const cell = `${fire.lat.toFixed(2)},${fire.lon.toFixed(2)}`;
       const kept = groups.get(cell);
       if (!kept || (fire.power || 0) > (kept.power || 0)) {
-        groups.set(cell, kept ? { ...fire, distanceKm: Math.min(fire.distanceKm, kept.distanceKm) } : fire);
+        groups.set(cell, kept ? { ...fire, distanceKm: Math.min(fire.distanceKm ?? Infinity, kept.distanceKm ?? Infinity) } : fire);
       }
     }
-    const deduped = [...groups.values()]
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 50);
+    // En mode point, les plus proches d'abord ; en mode bbox (pas de centre),
+    // les plus intenses d'abord — plus utile pour une vue France entière.
+    const sorter = mode === "point"
+      ? (a, b) => a.distanceKm - b.distanceKm
+      : (a, b) => (b.power || 0) - (a.power || 0);
+    const cap = mode === "point" ? 50 : 300;
+    const all = [...groups.values()].sort(sorter);
+    const deduped = all.slice(0, cap);
 
     // Les détections FIRMS se rafraîchissent toutes les quelques heures :
     // un cache CDN de 10 min évite de solliciter le quota inutilement.
     res.setHeader("Cache-Control", "public, s-maxage=600, stale-while-revalidate=600");
     return res.status(200).json({
       ok: true,
+      mode,
       count: deduped.length,
-      nearestKm: deduped.length ? deduped[0].distanceKm : null,
+      truncated: all.length > deduped.length,
+      nearestKm: mode === "point" && deduped.length ? deduped[0].distanceKm : null,
       radiusKm,
+      bbox: mode === "bbox" ? area : null,
       days,
       fires: deduped
     });

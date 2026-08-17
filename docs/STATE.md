@@ -1,6 +1,25 @@
 # OrageRadar — état du projet
 
-## Dernier cycle — module risque de feu de forêt
+## Dernier cycle — carte France des feux actifs
+
+**Besoin** : le module incendie ne montrait les foyers FIRMS qu'autour d'un seul lieu (rayon 100 km). L'utilisateur veut une vue d'ensemble de tous les foyers actifs sur la France.
+
+**Backend** (`api/fires.js`) : nouveau mode `bbox=west,south,east,north` en plus du mode `lat/lon/radius` existant — même endpoint, deux usages. En mode bbox : pas de centre donc pas de `distanceKm`, tri par puissance radiative décroissante (plus pertinent qu'une distance sans point de référence), jusqu'à 300 foyers renvoyés au lieu de 50 (`truncated: true` si dépassement). Emprise France testée : `-5.3,41.2,9.9,51.3` (métropole + Corse), sous la limite FIRMS de 20°×20°.
+
+**Frontend** : nouvelle page autonome `incendies-france.html` (même famille que `intelligence.html` — page dédiée avec son propre header et lien « Retour à OrageRadar », pas une section de plus dans l'accueil déjà chargé). Carte Leaflet plein cadre sur la France, sélecteur 24 h/48 h/72 h, rafraîchissement auto 10 min (aligné sur le cache CDN), légende par ancienneté identique à la carte chantier. Lien croisé ajouté des deux côtés : bouton « Carte France » dans le header de l'accueil, lien « Voir tous les foyers actifs en France » sous la carte du module incendie local.
+
+**Tests** (Playwright + serveur local, CDN Leaflet mocké car bloqué par le réseau du bac à sable) : `node --check` OK sur `api/fires.js` et le JS extrait des deux pages HTML ; page France sans erreur JS non interceptée, bandeau d'erreur correct quand le backend est injoignable (`Impossible de charger les foyers actifs pour le moment.`), bascule 24h/48h/72h fonctionnelle ; page d'accueil : les 2 liens vers `incendies-france.html` présents, aucune régression sur les blocs radar/incendie existants (échecs RainViewer/Open-Meteo observés sont dus au réseau restreint du bac à sable, pas à ce changement).
+
+**Non fait** : portage dans le module AXION (`CADENCE-AXION/apps/chantier/meteo.html`) — ce dépôt n'est pas attaché à cette session. Une vue France entière a moins de sens sur une page mono-chantier ; à trancher avec l'utilisateur avant de porter tel quel. Vérification en prod que `FIRMS_MAP_KEY` est bien configurée sur le projet Vercel `axion-chantier` toujours en attente (bloqué par le réseau du bac à sable lors de la tentative précédente, à confirmer côté utilisateur).
+
+## Rattrapage mémoire (cycles non documentés ici avant ce jour)
+
+Trois cycles ont eu lieu entre le module incendie initial et celui du jour, sans mise à jour de ce fichier :
+- **Carte des foyers actifs par chantier** (c2cc005) : carte Leaflet avec cercles proportionnels à la puissance radiative, couleur par ancienneté — base reprise et généralisée à la France ce cycle-ci.
+- **Moteur de consensus partagé** (a00d0ba, `assets/consensus.js`) : répondait exactement au « reste à faire » du cycle précédent (unifier l'accueil et Intelligence sur les mêmes 8 sources) — considérer ce point comme résolu.
+- **Installation en app, QR de partage, FAQ** (225322c) : ajoutés aux Réglages.
+
+## Cycle précédent — module risque de feu de forêt
 
 **Besoin** : chantiers proches de massifs boisés, partout en France, avec un état live.
 
@@ -23,7 +42,7 @@
 
 **Liens croisés** : l'accueil renvoie désormais vers Intelligence (le retour existait déjà).
 
-**Reste à faire** : unifier le moteur des deux pages (l'accueil compare 4 modèles avec un verdict binaire, Intelligence calcule un score de confiance sur 8 sources — deux réponses différentes à la même question).
+**Reste à faire** : unifier le moteur des deux pages (l'accueil compare 4 modèles avec un verdict binaire, Intelligence calcule un score de confiance sur 8 sources — deux réponses différentes à la même question). _Résolu depuis, voir « Rattrapage mémoire » ci-dessus._
 
 ## Cycle précédent — 
 _Dernière mise à jour : 16 août 2026 (soir, cycle 7)_
@@ -156,4 +175,4 @@ Chaque bouton porte une infobulle expliquant le compromis.
 
 ## Prochaine priorité recommandée
 
-Rafraîchissement automatique du radar toutes les 5 min + bouton play/pause (voir ROADMAP 1-2) — utile précisément pendant un épisode orageux.
+Vérifier en conditions réelles que `FIRMS_MAP_KEY` est configurée sur le projet Vercel `axion-chantier` (le bandeau et la carte se masquent silencieusement sinon — aucune erreur visible pour l'utilisateur). Ensuite : rafraîchissement automatique du radar toutes les 5 min + bouton play/pause (voir ROADMAP), et décider si `incendies-france.html` doit être porté dans AXION.
