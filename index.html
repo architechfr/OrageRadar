@@ -1248,15 +1248,15 @@
         } catch (e) { return null; }                     // dégradation silencieuse
     }
 
-    // Backend serverless (Vercel) : il détient la clé NASA FIRMS, jamais le
-    // navigateur. Laisser "" tant que le déploiement n'est pas fait : le bloc
-    // « feux actifs » reste alors simplement masqué.
-    const BACKEND_BASE = "";   // ex. "https://orageradar.vercel.app"
+    // Les fonctions serverless vivent dans le projet Vercel d'AXION, qui gère
+    // déjà des clés (Mistral). La clé NASA FIRMS y reste côté serveur : ce
+    // fichier est public, il ne doit jamais la contenir.
+    const BACKEND_BASE = "https://axion-chantier.vercel.app";
 
     function backendUrl(path) {
-        if (BACKEND_BASE) return BACKEND_BASE + path;
-        // Servi depuis Vercel : les fonctions sont sur la même origine
-        return location.hostname.endsWith("github.io") ? null : path;
+        // Servi depuis le même domaine que les fonctions : appel relatif
+        if (location.hostname.endsWith("axion-chantier.vercel.app")) return path;
+        return BACKEND_BASE + path;
     }
 
     async function loadActiveFires(lat, lon, token) {
