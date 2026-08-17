@@ -23,6 +23,9 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <!-- Moteur de consensus partagé avec la page Intelligence -->
+    <script src="./assets/consensus.js"></script>
+
     <style>
         .suggestion-item:hover { background-color: #334155; }
         iframe { display: block; }
@@ -274,9 +277,25 @@
             <span class="text-xs text-slate-500">6 prochaines heures</span>
         </div>
         <div id="models-verdict" class="text-sm mb-4"></div>
+
+        <div id="models-agreement" class="hidden mb-4">
+            <div class="flex justify-between text-xs text-slate-400 mb-1.5">
+                <span>Accord des modèles</span>
+                <span id="models-agreement-value"></span>
+            </div>
+            <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+                <div id="models-agreement-bar" class="h-full rounded-full transition-all"></div>
+            </div>
+            <div id="models-agreement-detail" class="text-xs text-slate-500 mt-1.5"></div>
+        </div>
+
         <div id="models-rows" class="space-y-2"></div>
-        <div class="text-xs text-slate-500 mt-3">
-            Plusieurs centres de prévision consultés séparément — leur accord renforce la confiance, leur désaccord invite à la prudence.
+
+        <div class="text-xs text-slate-500 mt-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>Plusieurs centres de prévision consultés séparément — leur accord renforce la confiance, leur désaccord invite à la prudence.</span>
+            <a href="./intelligence.html" class="text-sky-300 hover:text-sky-200 whitespace-nowrap">
+                Analyse complète (ensembles, score de confiance) →
+            </a>
         </div>
     </div>
 
@@ -1356,102 +1375,72 @@
     }
 
     // ── Comparaison des modèles de prévision ────────────────────────────────
-    // Plusieurs centres météo interrogés séparément : leur accord (ou non)
-    // dit à l'utilisateur quel crédit accorder à la prévision.
-    // ⚠ AROME est un modèle national : hors de son domaine, Open-Meteo renvoie
-    // « "latitude":nan », qui n'est PAS du JSON valide et fait échouer
-    // JSON.parse. D'où le repli sur les modèles globaux en cas d'échec.
-
-    const FORECAST_MODELS = [
-        { id: "meteofrance_arome_france", name: "AROME",  detail: "Météo-France · 1,3 km", local: true },
-        { id: "ecmwf_ifs025",             name: "ECMWF",  detail: "Européen · référence" },
-        { id: "icon_eu",                  name: "ICON",   detail: "Allemand · Europe" },
-        { id: "gfs_seamless",             name: "GFS",    detail: "Américain · global" }
-    ];
+    // Moteur partagé avec la page Intelligence (assets/consensus.js) : mêmes
+    // sources, mêmes pondérations, même formule d'accord. Les deux pages ne
+    // peuvent donc plus se contredire. Intelligence ajoute par-dessus les
+    // ensembles probabilistes et le score de confiance global.
 
     let modelsRequestToken = 0;
-
-    async function fetchModels(lat, lon, models) {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-            + "&hourly=precipitation,cape"
-            + `&models=${models.map(m => m.id).join(",")}`
-            + "&forecast_days=2&timezone=auto";
-        const response = await fetch(url);
-        return await response.json();   // peut lever si AROME hors domaine
-    }
 
     async function loadModelComparison(lat, lon) {
         const token = ++modelsRequestToken;
         const card = document.getElementById("models-card");
-        let models = FORECAST_MODELS, data = null;
-
         try {
-            data = await fetchModels(lat, lon, models);
+            const consensus = await Consensus.load(lat, lon);
+            if (token !== modelsRequestToken) return;   // lieu changé entre-temps
+            if (!consensus) { card.classList.add("hidden"); return; }
+            renderModelComparison(consensus);
+            card.classList.remove("hidden");
         } catch (e) {
-            // Réponse illisible → on retente sans les modèles nationaux
-            models = FORECAST_MODELS.filter(m => !m.local);
-            try { data = await fetchModels(lat, lon, models); }
-            catch (e2) { card.classList.add("hidden"); return; }
+            console.error("Comparaison des modèles indisponible :", e);
+            card.classList.add("hidden");
         }
-        if (token !== modelsRequestToken) return;   // lieu changé entre-temps
-        if (!data || !data.hourly) { card.classList.add("hidden"); return; }
-
-        const H = data.hourly, now = new Date();
-        let s = H.time.findIndex(t => new Date(t) >= now);
-        if (s === -1) s = 0;
-
-        const results = [];
-        models.forEach(m => {
-            const precip = H["precipitation_" + m.id], cape = H["cape_" + m.id];
-            if (!precip) return;                       // modèle absent de la réponse
-            const window = precip.slice(s, s + 6).filter(v => v != null);
-            if (!window.length) return;                // hors domaine du modèle
-            const capeWindow = cape ? cape.slice(s, s + 6).filter(v => v != null) : [];
-            results.push({
-                ...m,
-                mm: window.reduce((a, b) => a + b, 0),
-                cape: capeWindow.length ? Math.max(...capeWindow) : 0
-            });
-        });
-
-        if (results.length < 2) { card.classList.add("hidden"); return; }
-        renderModelComparison(results);
-        card.classList.remove("hidden");
     }
 
-    function renderModelComparison(results) {
-        const rainy = results.filter(r => r.mm >= 0.5);
-        const stormy = results.filter(r => r.cape >= 1000);
-        const total = results.length;
+    function renderModelComparison(c) {
+        const wet = c.rows.filter(r => r.mm >= 0.5);
+        const stormy = c.rows.filter(r => r.stormCode || (r.cape || 0) >= 1000);
 
-        // Verdict d'ensemble
+        // Verdict : vocabulaire aligné sur Intelligence
         const verdict = document.getElementById("models-verdict");
         let text, cls;
-        if (rainy.length === 0) {
+        // L'instabilité seule ne fait pas un orage : sans pluie annoncée par
+        // aucun modèle, on parle de potentiel, pas de signal orageux.
+        if (c.stormRatio >= 50 && wet.length) {
+            cls = "alert-storm";
+            text = `<i class="fa-solid fa-bolt"></i> Signal orageux : ${stormy.length} source${stormy.length > 1 ? "s" : ""} sur ${c.count} ${stormy.length > 1 ? "décrivent" : "décrit"} une atmosphère instable et humide — le radar prime sur le très court terme.`;
+        } else if (c.stormRatio >= 50) {
+            cls = "alert-storm";
+            text = `<i class="fa-solid fa-cloud-bolt"></i> Atmosphère instable, mais aucun modèle n'annonce de pluie sur 6 h : potentiel orageux à surveiller au radar.`;
+        } else if (c.wetRatio >= 65) {
+            cls = "alert-storm";
+            text = `<i class="fa-solid fa-cloud-rain"></i> Pluie probable : le panel est majoritairement humide (${Math.round(c.wetRatio)} % du poids des sources).`;
+        } else if (!wet.length) {
             cls = "alert-clear";
-            text = `<i class="fa-solid fa-circle-check"></i> Les ${total} modèles s'accordent : pas de pluie attendue.`;
-        } else if (rainy.length === total) {
-            cls = "alert-storm";
-            text = `<i class="fa-solid fa-cloud-rain"></i> Les ${total} modèles s'accordent : pluie attendue — prévision fiable.`;
+            text = `<i class="fa-solid fa-circle-check"></i> Signal sec dominant : aucune des ${c.count} sources ne dépasse 0,5 mm sur 6 h.`;
         } else {
-            const isolated = rainy.length === 1 ? rainy[0].name
-                : results.filter(r => r.mm < 0.5).length === 1 ? results.find(r => r.mm < 0.5).name : null;
             cls = "alert-storm";
-            text = `<i class="fa-solid fa-scale-unbalanced"></i> Désaccord : ${rainy.length} modèle${rainy.length > 1 ? "s" : ""} sur ${total} annonce${rainy.length > 1 ? "nt" : ""} de la pluie`
-                 + (isolated ? ` (${isolated} isolé)` : "") + " — prévision incertaine, surveiller le radar.";
-        }
-        if (stormy.length) {
-            text += `<br><span class="text-xs">Instabilité orageuse signalée par ${stormy.length} modèle${stormy.length > 1 ? "s" : ""} sur ${total}.</span>`;
+            text = `<i class="fa-solid fa-scale-unbalanced"></i> Scénario partagé : ${wet.length} source${wet.length > 1 ? "s" : ""} sur ${c.count} annonce${wet.length > 1 ? "nt" : ""} de la pluie — prévision incertaine, surveiller le radar.`;
         }
         verdict.className = "text-sm mb-4 rounded-2xl px-4 py-3 " + cls;
         verdict.innerHTML = text;
 
-        // Détail par modèle
-        const maxMm = Math.max(1, ...results.map(r => r.mm));
+        // Accord des modèles (même calcul que la page Intelligence)
+        const agreement = Math.round(c.agreement);
+        document.getElementById("models-agreement").classList.remove("hidden");
+        document.getElementById("models-agreement-value").textContent = agreement + " %";
+        const bar = document.getElementById("models-agreement-bar");
+        bar.style.width = agreement + "%";
+        bar.style.background = agreement >= 75 ? "#34d399" : agreement >= 50 ? "#fbbf24" : "#fb923c";
+        document.getElementById("models-agreement-detail").textContent =
+            `${c.count} sources sur ${c.total} exploitables · dispersion des cumuls ${c.spread.toFixed(1)} mm`;
+
+        // Détail par source
+        const maxMm = Math.max(1, ...c.rows.map(r => r.mm));
         const rows = document.getElementById("models-rows");
         rows.innerHTML = "";
-        results.forEach(r => {
-            const wet = r.mm >= 0.5;
+        c.rows.forEach(r => {
+            const isWet = r.mm >= 0.5;
             const row = document.createElement("div");
             row.className = "flex items-center gap-3 text-sm";
             row.innerHTML = `
@@ -1461,10 +1450,10 @@
                 </div>
                 <div class="flex-1 bg-slate-800 rounded-full h-2 overflow-hidden">
                     <div class="h-full rounded-full" style="width:${Math.round((r.mm / maxMm) * 100)}%;
-                         background:${wet ? "#38bdf8" : "#334155"}"></div>
+                         background:${isWet ? "#38bdf8" : "#334155"}"></div>
                 </div>
-                <div class="w-16 text-right ${wet ? "text-sky-300" : "text-slate-500"}">${r.mm.toFixed(1)} mm</div>
-                <div class="w-6 text-center">${r.cape >= 1000 ? '<i class="fa-solid fa-bolt text-amber-300" title="Atmosphère instable"></i>' : ""}</div>`;
+                <div class="w-16 text-right ${isWet ? "text-sky-300" : "text-slate-500"}">${r.mm.toFixed(1)} mm</div>
+                <div class="w-6 text-center">${(r.stormCode || (r.cape || 0) >= 1000) ? '<i class="fa-solid fa-bolt text-amber-300" title="Atmosphère instable"></i>' : ""}</div>`;
             rows.appendChild(row);
         });
     }
